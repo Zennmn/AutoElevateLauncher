@@ -1,0 +1,14 @@
+C:\Users\31396\Documents\Codex\自启\src\AutoElevateLauncher\bin\Debug\net8.0-windows\AutoElevateLauncher.exe
+C:\Users\31396\Documents\Codex\自启\src\AutoElevateLauncher\bin\Debug\net8.0-windows\AutoElevateLauncher.deps.json
+C:\Users\31396\Documents\Codex\自启\src\AutoElevateLauncher\bin\Debug\net8.0-windows\AutoElevateLauncher.runtimeconfig.json
+C:\Users\31396\Documents\Codex\自启\src\AutoElevateLauncher\bin\Debug\net8.0-windows\AutoElevateLauncher.dll
+C:\Users\31396\Documents\Codex\自启\src\AutoElevateLauncher\bin\Debug\net8.0-windows\AutoElevateLauncher.pdb
+C:\Users\31396\Documents\Codex\自启\src\AutoElevateLauncher\obj\Debug\net8.0-windows\AutoElevateLauncher.GeneratedMSBuildEditorConfig.editorconfig
+C:\Users\31396\Documents\Codex\自启\src\AutoElevateLauncher\obj\Debug\net8.0-windows\AutoElevateLauncher.AssemblyInfoInputs.cache
+C:\Users\31396\Documents\Codex\自启\src\AutoElevateLauncher\obj\Debug\net8.0-windows\AutoElevateLauncher.AssemblyInfo.cs
+C:\Users\31396\Documents\Codex\自启\src\AutoElevateLauncher\obj\Debug\net8.0-windows\AutoElevateLauncher.csproj.CoreCompileInputs.cache
+C:\Users\31396\Documents\Codex\自启\src\AutoElevateLauncher\obj\Debug\net8.0-windows\AutoElevateLauncher.dll
+C:\Users\31396\Documents\Codex\自启\src\AutoElevateLauncher\obj\Debug\net8.0-windows\refint\AutoElevateLauncher.dll
+C:\Users\31396\Documents\Codex\自启\src\AutoElevateLauncher\obj\Debug\net8.0-windows\AutoElevateLauncher.pdb
+C:\Users\31396\Documents\Codex\自启\src\AutoElevateLauncher\obj\Debug\net8.0-windows\AutoElevateLauncher.genruntimeconfig.cache
+C:\Users\31396\Documents\Codex\自启\src\AutoElevateLauncher\obj\Debug\net8.0-windows\ref\AutoElevateLauncher.dll
