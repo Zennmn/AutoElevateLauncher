@@ -54,6 +54,16 @@ public sealed class ScheduledTaskService
         return _processRunner.RunAsync("schtasks.exe", $"/Delete /TN \"{ManagerTaskName}\" /F", null, cancellationToken);
     }
 
+    public Task<ProcessCommandResult> EnableManagerSelfStartElevatedAsync(string appExePath, CancellationToken cancellationToken = default)
+    {
+        return _processRunner.RunElevatedAsync(appExePath, "--enable-manager-startup", cancellationToken);
+    }
+
+    public Task<ProcessCommandResult> DisableManagerSelfStartElevatedAsync(string appExePath, CancellationToken cancellationToken = default)
+    {
+        return _processRunner.RunElevatedAsync(appExePath, "--disable-manager-startup", cancellationToken);
+    }
+
     public Task<ProcessCommandResult> DeleteTaskAsync(StartupItem item, CancellationToken cancellationToken = default)
     {
         item.EnsureTaskName();
