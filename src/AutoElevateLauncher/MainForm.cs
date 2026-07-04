@@ -7,6 +7,7 @@ public sealed class MainForm : Form
     private readonly ConfigStore _configStore;
     private readonly ScheduledTaskService _taskService;
     private readonly IStartupItemLauncher _itemLauncher;
+    private readonly Action<bool>? _selfStartChanged;
     private StartupConfig _config;
     private readonly DataGridView _items = new()
     {
@@ -34,18 +35,20 @@ public sealed class MainForm : Form
     private readonly Label _lastStatus = new() { Dock = DockStyle.Top, AutoSize = true };
     private readonly Label _lastError = new() { Dock = DockStyle.Top, AutoSize = true };
 
-    public MainForm(StartupConfig config, ConfigStore configStore, ScheduledTaskService taskService, IStartupItemLauncher itemLauncher)
+    public MainForm(StartupConfig config, ConfigStore configStore, ScheduledTaskService taskService, IStartupItemLauncher itemLauncher, Action<bool>? selfStartChanged = null)
     {
         _configStore = configStore;
         _taskService = taskService;
         _itemLauncher = itemLauncher;
+        _selfStartChanged = selfStartChanged;
         _config = config;
 
         Text = "管理员自启动器";
         Width = 1000;
         Height = 650;
         BuildLayout();
-        _selfStartToggle.Click += async (_, _) => await ToggleSelfStartAsync();
+        _selfStartToggle.Click += async (_, _) => await ConfigureSelfStartAsync();
+        Activated += (_, _) => RefreshStatusLabels();
         RefreshStatusLabels();
         RefreshList();
     }
@@ -67,7 +70,7 @@ public sealed class MainForm : Form
         var delete = new Button { Text = "删除", Width = 80 };
         addScript.Click += (_, _) => AddItem(StartupItemType.PowerShellScript);
         addProgram.Click += (_, _) => AddItem(StartupItemType.Executable);
-        delete.Click += async (_, _) => await DeleteSelectedAsync();
+        delete.Click += (_, _) => DeleteSelected();
         leftButtons.Controls.AddRange([addScript, addProgram, delete]);
 
         split.Panel1.Controls.Add(_items);
@@ -98,7 +101,7 @@ public sealed class MainForm : Form
         var run = new Button { Text = "立即运行", Width = 90 };
         var stop = new Button { Text = "停止", Width = 80 };
         var logs = new Button { Text = "打开日志", Width = 90 };
-        save.Click += async (_, _) => await SaveSelectedAsync();
+        save.Click += (_, _) => SaveSelected();
         run.Click += async (_, _) => await RunSelectedAsync();
         stop.Click += (_, _) => StopSelected();
         logs.Click += (_, _) => OpenSelectedLogs();
@@ -106,46 +109,37 @@ public sealed class MainForm : Form
         details.Controls.Add(actions);
     }
 
-    private void RefreshStatusLabels()
+    internal void RefreshStatusLabels()
     {
         _permissionStatus.Text = WindowsPrivilege.IsCurrentProcessAdministrator() ? "当前权限：管理员" : "当前权限：普通用户";
-        _selfStartStatus.Text = _config.StartManagerAtLogin ? "管理员开机自启：已启用" : "管理员开机自启：未启用";
-        _selfStartToggle.Text = _config.StartManagerAtLogin ? "关闭管理员自启" : "启用管理员自启";
+        var selfStartState = SelfStartSetupUiState.FromConfig(_config.StartManagerAtLogin);
+        _selfStartStatus.Text = selfStartState.StatusText;
+        _selfStartToggle.Text = selfStartState.ButtonText;
+        _selfStartToggle.Visible = selfStartState.ButtonVisible;
+        _selfStartToggle.Enabled = selfStartState.ButtonEnabled;
     }
 
-    private async Task ToggleSelfStartAsync()
+    private async Task ConfigureSelfStartAsync()
     {
         if (_config.StartManagerAtLogin)
         {
-            var result = WindowsPrivilege.IsCurrentProcessAdministrator()
-                ? await _taskService.DeleteManagerSelfStartTaskAsync()
-                : await _taskService.DisableManagerSelfStartElevatedAsync(Application.ExecutablePath);
-            if (result.Succeeded)
-            {
-                _config.StartManagerAtLogin = false;
-                _configStore.Save(_config);
-                RefreshStatusLabels();
-            }
-            else
-            {
-                MessageBox.Show(result.StandardError + Environment.NewLine + result.StandardOutput, "关闭管理员开机自启失败", MessageBoxButtons.OK, MessageBoxIcon.Error);
-            }
+            RefreshStatusLabels();
+            return;
+        }
+
+        var result = WindowsPrivilege.IsCurrentProcessAdministrator()
+            ? await _taskService.CreateOrUpdateManagerSelfStartTaskAsync(Application.ExecutablePath)
+            : await _taskService.EnableManagerSelfStartElevatedAsync(Application.ExecutablePath);
+        if (result.Succeeded)
+        {
+            _config.StartManagerAtLogin = true;
+            _configStore.Save(_config);
+            _selfStartChanged?.Invoke(true);
+            RefreshStatusLabels();
         }
         else
         {
-            var result = WindowsPrivilege.IsCurrentProcessAdministrator()
-                ? await _taskService.CreateOrUpdateManagerSelfStartTaskAsync(Application.ExecutablePath)
-                : await _taskService.EnableManagerSelfStartElevatedAsync(Application.ExecutablePath);
-            if (result.Succeeded)
-            {
-                _config.StartManagerAtLogin = true;
-                _configStore.Save(_config);
-                RefreshStatusLabels();
-            }
-            else
-            {
-                MessageBox.Show(result.StandardError + Environment.NewLine + result.StandardOutput, "启用管理员开机自启失败", MessageBoxButtons.OK, MessageBoxIcon.Error);
-            }
+            MessageBox.Show(result.StandardError + Environment.NewLine + result.StandardOutput, "配置管理员开机自启失败", MessageBoxButtons.OK, MessageBoxIcon.Error);
         }
     }
 
@@ -206,7 +200,7 @@ public sealed class MainForm : Form
         _lastError.Text = item.LastTaskError;
     }
 
-    private async Task SaveSelectedAsync()
+    private void SaveSelected()
     {
         var item = SelectedItem;
         if (item is null) return;
@@ -245,7 +239,7 @@ public sealed class MainForm : Form
         }
     }
 
-    private async Task DeleteSelectedAsync()
+    private void DeleteSelected()
     {
         var item = SelectedItem;
         if (item is null) return;

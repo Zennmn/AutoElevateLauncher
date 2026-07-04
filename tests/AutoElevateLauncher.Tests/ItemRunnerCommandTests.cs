@@ -47,4 +47,41 @@ public sealed class ItemRunnerCommandTests
 
         Assert.IsType<ItemRunner>(launcher);
     }
+
+    [Fact]
+    public async Task RunAsync_RecordsLastTaskErrorWhenExecutableLaunchFails()
+    {
+        var directory = Path.Combine(Path.GetTempPath(), "AutoElevateLauncherTests", Guid.NewGuid().ToString("N"));
+        var store = new ConfigStore(directory);
+        var runner = new ItemRunner(store);
+        var item = new StartupItem
+        {
+            Id = Guid.NewGuid().ToString("N"),
+            Name = "缺失程序",
+            Type = StartupItemType.Executable,
+            Path = Path.Combine(directory, "missing.exe"),
+            WorkingDirectory = directory,
+            LastTaskError = "旧错误"
+        };
+        var config = new StartupConfig { Items = [item] };
+
+        try
+        {
+            Directory.CreateDirectory(directory);
+
+            var exitCode = await runner.RunAsync(config, item);
+
+            Assert.Equal(-1, exitCode);
+            Assert.Equal(StartupItemStatus.Failed, item.LastStatus);
+            Assert.False(string.IsNullOrWhiteSpace(item.LastTaskError));
+            Assert.NotEqual("旧错误", item.LastTaskError);
+        }
+        finally
+        {
+            if (Directory.Exists(directory))
+            {
+                Directory.Delete(directory, recursive: true);
+            }
+        }
+    }
 }

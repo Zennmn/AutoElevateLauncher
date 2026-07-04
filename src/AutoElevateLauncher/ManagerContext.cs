@@ -57,6 +57,7 @@ public sealed class ManagerContext : ApplicationContext
             {
                 _config.StartManagerAtLogin = true;
                 _configStore.Save(_config);
+                _mainForm?.RefreshStatusLabels();
             }
             else
             {
@@ -73,6 +74,7 @@ public sealed class ManagerContext : ApplicationContext
             {
                 _config.StartManagerAtLogin = false;
                 _configStore.Save(_config);
+                _mainForm?.RefreshStatusLabels();
             }
             else
             {
@@ -96,7 +98,7 @@ public sealed class ManagerContext : ApplicationContext
     {
         if (_mainForm is null || _mainForm.IsDisposed)
         {
-            _mainForm = new MainForm(_config, _configStore, _taskService, _itemLauncher);
+            _mainForm = new MainForm(_config, _configStore, _taskService, _itemLauncher, startAtLogin => _startAtLoginMenuItem.Checked = startAtLogin);
         }
 
         _mainForm.Show();

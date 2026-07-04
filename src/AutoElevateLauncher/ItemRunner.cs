@@ -32,6 +32,7 @@ public sealed class ItemRunner : IStartupItemLauncher
         item.LastRunFinishedAt = null;
         item.LastExitCode = null;
         item.LastStatus = StartupItemStatus.Running;
+        item.LastTaskError = string.Empty;
         _configStore.Save(config);
 
         try
@@ -43,6 +44,7 @@ public sealed class ItemRunner : IStartupItemLauncher
             item.LastRunFinishedAt = DateTimeOffset.Now;
             item.LastExitCode = exitCode;
             item.LastStatus = exitCode == 0 ? StartupItemStatus.Succeeded : StartupItemStatus.Failed;
+            item.LastTaskError = string.Empty;
             _configStore.Save(config);
             return exitCode;
         }
@@ -52,6 +54,7 @@ public sealed class ItemRunner : IStartupItemLauncher
             item.LastRunFinishedAt = DateTimeOffset.Now;
             item.LastExitCode = -1;
             item.LastStatus = StartupItemStatus.Failed;
+            item.LastTaskError = ex.Message;
             _configStore.Save(config);
             return -1;
         }
