@@ -26,7 +26,7 @@ public sealed class ManagerContext : ApplicationContext
 
         _notifyIcon = new NotifyIcon
         {
-            Icon = SystemIcons.Application,
+            Icon = AppIcon.Load(),
             Text = "管理员自启动器",
             Visible = true,
             ContextMenuStrip = BuildMenu()
