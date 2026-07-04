@@ -5,11 +5,14 @@ namespace AutoElevateLauncher;
 public sealed class MainForm : Form
 {
     private const int HeaderHeight = 76;
-    private const int DetailsActionBarHeight = 52;
+    private static readonly Padding SectionPadding = new(12);
+    private static readonly Padding ControlMargin = new(3);
+    private static readonly Padding LabelMargin = new(0, 2, 0, 1);
 
     private readonly ConfigStore _configStore;
     private readonly ScheduledTaskService _taskService;
     private readonly IStartupItemLauncher _itemLauncher;
+    private readonly StartupItemStopper _itemStopper;
     private readonly Action<bool>? _selfStartChanged;
     private readonly StartupConfig _config;
     private SplitContainer? _split;
@@ -42,7 +45,6 @@ public sealed class MainForm : Form
     private readonly CheckBox _enabled = new() { Text = "启用此项目", Dock = DockStyle.Top };
     private readonly Label _permissionStatus = new() { AutoSize = true };
     private readonly Label _selfStartStatus = new() { AutoSize = true };
-    private readonly Label _selfStartStatusDetails = new() { Dock = DockStyle.Top, AutoSize = true };
     private readonly Button _selfStartToggle = new() { Width = 140, Height = 30, Text = "配置管理员自启" };
     private readonly Label _typeDisplay = new() { Dock = DockStyle.Top, AutoSize = true };
     private readonly Label _recentStart = new() { Dock = DockStyle.Top, AutoSize = true };
@@ -50,12 +52,24 @@ public sealed class MainForm : Form
     private readonly Label _exitCode = new() { Dock = DockStyle.Top, AutoSize = true };
     private readonly Label _lastStatus = new() { Dock = DockStyle.Top, AutoSize = true };
     private readonly Label _lastError = new() { Dock = DockStyle.Top, AutoSize = true };
+    private readonly Label _detailsEmptyState = new()
+    {
+        Dock = DockStyle.Fill,
+        Text = "在左侧选择一个项目以查看详情。",
+        TextAlign = ContentAlignment.MiddleCenter,
+        BackColor = SystemColors.Window,
+        ForeColor = SystemColors.GrayText
+    };
+    private TableLayoutPanel? _details;
+    private Button[] _actionButtons = [];
+    private Button? _deleteButton;
 
     public MainForm(StartupConfig config, ConfigStore configStore, ScheduledTaskService taskService, IStartupItemLauncher itemLauncher, Action<bool>? selfStartChanged = null)
     {
         _configStore = configStore;
         _taskService = taskService;
         _itemLauncher = itemLauncher;
+        _itemStopper = new StartupItemStopper(configStore);
         _selfStartChanged = selfStartChanged;
         _config = config;
 
@@ -81,6 +95,7 @@ public sealed class MainForm : Form
         FormClosing += (_, _) => SaveWindowLayout();
         RefreshStatusLabels();
         RefreshList();
+        LoadSelectedIntoDetails();
     }
 
     private void BuildLayout(int splitterDistance)
@@ -99,27 +114,41 @@ public sealed class MainForm : Form
 
         var split = new SplitContainer
         {
-            Dock = DockStyle.Fill,
-            Panel1MinSize = ManagerWindowLayoutState.MinimumPaneWidth,
-            Panel2MinSize = ManagerWindowLayoutState.MinimumPaneWidth
+            Dock = DockStyle.Fill
         };
         _split = split;
-        split.HandleCreated += (_, _) => BeginInvoke(() => ApplySplitterDistance(split, splitterDistance));
         root.Controls.Add(split, 0, 1);
 
         BuildLeftPane(split.Panel1);
         BuildRightPane(split.Panel2);
+
+        Load += (_, _) => ApplyLayout(split, splitterDistance);
     }
 
-    private static void ApplySplitterDistance(SplitContainer split, int splitterDistance)
+    private static void ApplyLayout(SplitContainer split, int splitterDistance)
     {
-        if (split.IsDisposed || split.Width <= split.Panel1MinSize + split.Panel2MinSize)
+        try
         {
-            return;
-        }
+            if (split.IsDisposed || split.Width <= 0)
+            {
+                return;
+            }
 
-        var max = split.Width - split.Panel2MinSize;
-        split.SplitterDistance = Math.Min(Math.Max(splitterDistance, split.Panel1MinSize), max);
+            split.Panel1MinSize = ManagerWindowLayoutState.MinimumPaneWidth;
+            split.Panel2MinSize = ManagerWindowLayoutState.MinimumPaneWidth;
+
+            if (split.Width <= split.Panel1MinSize + split.Panel2MinSize)
+            {
+                return;
+            }
+
+            var max = split.Width - split.Panel2MinSize;
+            split.SplitterDistance = Math.Min(Math.Max(splitterDistance, split.Panel1MinSize), max);
+        }
+        catch
+        {
+            // Ignore splitter layout initialization errors; the form will use defaults.
+        }
     }
 
     private Control BuildHeader()
@@ -141,7 +170,9 @@ public sealed class MainForm : Form
         titleText.Controls.Add(new Label { Text = "登录后以管理员权限启动脚本和程序", AutoSize = true, ForeColor = SystemColors.GrayText }, 0, 1);
         titleArea.Controls.Add(titleText);
 
-        var statusArea = new FlowLayoutPanel { Dock = DockStyle.Fill, FlowDirection = FlowDirection.RightToLeft, WrapContents = false };
+        var statusArea = new FlowLayoutPanel { Dock = DockStyle.Fill, FlowDirection = FlowDirection.RightToLeft, WrapContents = false, Padding = new Padding(0, 4, 0, 0) };
+        _permissionStatus.Margin = new Padding(0, 0, 12, 0);
+        _selfStartStatus.Margin = new Padding(0, 0, 12, 0);
         statusArea.Controls.Add(_selfStartToggle);
         statusArea.Controls.Add(_selfStartStatus);
         statusArea.Controls.Add(_permissionStatus);
@@ -153,22 +184,22 @@ public sealed class MainForm : Form
 
     private void BuildLeftPane(Control parent)
     {
-        var leftPanel = new TableLayoutPanel { Dock = DockStyle.Fill, RowCount = 3, ColumnCount = 1, Padding = new Padding(12) };
-        leftPanel.RowStyles.Add(new RowStyle(SizeType.Absolute, 28));
-        leftPanel.RowStyles.Add(new RowStyle(SizeType.Absolute, 40));
+        var leftPanel = new TableLayoutPanel { Dock = DockStyle.Fill, RowCount = 3, ColumnCount = 1, Padding = SectionPadding, BackColor = SystemColors.Window };
+        leftPanel.RowStyles.Add(new RowStyle(SizeType.Absolute, 24));
+        leftPanel.RowStyles.Add(new RowStyle(SizeType.AutoSize));
         leftPanel.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
         parent.Controls.Add(leftPanel);
 
         leftPanel.Controls.Add(new Label { Text = "启动项目", Dock = DockStyle.Fill, AutoSize = false, Font = new Font(SystemFonts.DefaultFont, FontStyle.Bold), TextAlign = ContentAlignment.MiddleLeft }, 0, 0);
 
-        var toolbar = new FlowLayoutPanel { Dock = DockStyle.Fill, FlowDirection = FlowDirection.LeftToRight, WrapContents = false };
-        var addScript = new Button { Text = "新增脚本", Width = 100 };
-        var addProgram = new Button { Text = "新增程序", Width = 100 };
-        var delete = new Button { Text = "删除", Width = 80 };
+        var toolbar = new FlowLayoutPanel { Dock = DockStyle.Fill, AutoSize = true, AutoSizeMode = AutoSizeMode.GrowAndShrink, FlowDirection = FlowDirection.LeftToRight, WrapContents = false, Padding = new Padding(6, 4, 6, 4) };
+        var addScript = CreateButton("新增脚本");
+        var addProgram = CreateButton("新增程序");
+        _deleteButton = CreateButton("删除", enabled: false);
         addScript.Click += (_, _) => AddItem(StartupItemType.PowerShellScript);
         addProgram.Click += (_, _) => AddItem(StartupItemType.Executable);
-        delete.Click += (_, _) => DeleteSelected();
-        toolbar.Controls.AddRange([addScript, addProgram, delete]);
+        _deleteButton.Click += (_, _) => DeleteSelected();
+        toolbar.Controls.AddRange([addScript, addProgram, _deleteButton]);
         leftPanel.Controls.Add(toolbar, 0, 1);
 
         _items.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = "名称", DataPropertyName = nameof(StartupItem.Name), Width = 150 });
@@ -177,7 +208,7 @@ public sealed class MainForm : Form
         _items.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = "最近状态", DataPropertyName = nameof(StartupItem.LastStatus), AutoSizeMode = DataGridViewAutoSizeColumnMode.Fill });
         _items.SelectionChanged += (_, _) => LoadSelectedIntoDetails();
 
-        var gridHost = new Panel { Dock = DockStyle.Fill };
+        var gridHost = new Panel { Dock = DockStyle.Fill, BackColor = SystemColors.Window };
         gridHost.Controls.Add(_items);
         gridHost.Controls.Add(_emptyState);
         leftPanel.Controls.Add(gridHost, 0, 2);
@@ -185,43 +216,45 @@ public sealed class MainForm : Form
 
     private void BuildRightPane(Control parent)
     {
-        var rightPanel = new TableLayoutPanel { Dock = DockStyle.Fill, RowCount = 3, ColumnCount = 1, Padding = new Padding(12) };
-        rightPanel.RowStyles.Add(new RowStyle(SizeType.Absolute, 28));
+        var rightPanel = new TableLayoutPanel { Dock = DockStyle.Fill, RowCount = 3, ColumnCount = 1, Padding = SectionPadding, BackColor = SystemColors.Window };
+        rightPanel.RowStyles.Add(new RowStyle(SizeType.Absolute, 24));
         rightPanel.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
-        rightPanel.RowStyles.Add(new RowStyle(SizeType.Absolute, DetailsActionBarHeight));
+        rightPanel.RowStyles.Add(new RowStyle(SizeType.AutoSize));
         parent.Controls.Add(rightPanel);
 
-        rightPanel.Controls.Add(new Label { Text = "项目详情", Dock = DockStyle.Fill, AutoSize = false, Font = new Font(SystemFonts.DefaultFont, FontStyle.Bold), TextAlign = ContentAlignment.MiddleLeft }, 0, 0);
+        rightPanel.Controls.Add(new Label { Text = "项目详情", Dock = DockStyle.Fill, AutoSize = false, Font = new Font(SystemFonts.DefaultFont, FontStyle.Bold), TextAlign = ContentAlignment.MiddleLeft, BackColor = SystemColors.Window }, 0, 0);
 
-        var detailsScroll = new Panel { Dock = DockStyle.Fill, AutoScroll = true };
-        var details = new TableLayoutPanel { Dock = DockStyle.Top, AutoSize = true, ColumnCount = 1, Padding = new Padding(0, 0, 8, 0) };
-        detailsScroll.Controls.Add(details);
+        var detailsScroll = new Panel { Dock = DockStyle.Fill, AutoScroll = true, BackColor = SystemColors.Window };
+        _details = new TableLayoutPanel { Dock = DockStyle.Top, AutoSize = true, ColumnCount = 1, Padding = new Padding(0, 0, 8, 0), BackColor = SystemColors.Window };
+        detailsScroll.Controls.Add(_details);
+        detailsScroll.Controls.Add(_detailsEmptyState);
         rightPanel.Controls.Add(detailsScroll, 0, 1);
 
-        AddLabeled(details, "管理员自启", _selfStartStatusDetails);
-        AddLabeled(details, "名称", _name);
-        AddLabeled(details, "类型", _typeDisplay);
-        AddLabeled(details, "路径", _path);
-        AddLabeled(details, "参数", _arguments);
-        AddLabeled(details, "工作目录", _workingDirectory);
-        details.Controls.Add(_enabled);
-        AddLabeled(details, "最近启动", _recentStart);
-        AddLabeled(details, "最近结束", _recentEnd);
-        AddLabeled(details, "退出码", _exitCode);
-        AddLabeled(details, "状态", _lastStatus);
-        AddLabeled(details, "最后错误", _lastError);
+        AddLabeled(_details, "名称", _name);
+        AddLabeled(_details, "类型", _typeDisplay);
+        AddLabeled(_details, "路径", _path);
+        AddLabeled(_details, "参数", _arguments);
+        AddLabeled(_details, "工作目录", _workingDirectory);
+        _details.Controls.Add(_enabled);
+        AddLabeled(_details, "最近启动", _recentStart);
+        AddLabeled(_details, "最近结束", _recentEnd);
+        AddLabeled(_details, "退出码", _exitCode);
+        AddLabeled(_details, "状态", _lastStatus);
+        AddLabeled(_details, "最后错误", _lastError);
 
-        var actions = new FlowLayoutPanel { Dock = DockStyle.Fill, FlowDirection = FlowDirection.RightToLeft, WrapContents = false, Padding = new Padding(0, 10, 0, 0) };
-        var logs = new Button { Text = "打开日志", Width = 90 };
-        var stop = new Button { Text = "停止", Width = 80 };
-        var run = new Button { Text = "立即运行", Width = 90 };
-        var save = new Button { Text = "保存", Width = 80 };
+        var actions = new FlowLayoutPanel { Dock = DockStyle.Fill, AutoSize = true, AutoSizeMode = AutoSizeMode.GrowAndShrink, FlowDirection = FlowDirection.RightToLeft, WrapContents = false, Padding = new Padding(6), BackColor = SystemColors.Window };
+        var logs = CreateButton("打开日志", enabled: false);
+        var stop = CreateButton("停止", enabled: false);
+        var run = CreateButton("立即运行", bold: true, enabled: false);
+        var save = CreateButton("保存", bold: true, enabled: false);
         save.Click += (_, _) => SaveSelected();
         run.Click += async (_, _) => await RunSelectedAsync();
-        stop.Click += (_, _) => StopSelected();
+        stop.Click += async (_, _) => await StopSelectedAsync();
         logs.Click += (_, _) => OpenSelectedLogs();
         actions.Controls.AddRange([save, run, stop, logs]);
         rightPanel.Controls.Add(actions, 0, 2);
+
+        _actionButtons = [save, run, stop, logs];
     }
 
     internal void RefreshStatusLabels()
@@ -229,7 +262,6 @@ public sealed class MainForm : Form
         _permissionStatus.Text = WindowsPrivilege.IsCurrentProcessAdministrator() ? "当前权限：管理员" : "当前权限：普通用户";
         var selfStartState = SelfStartSetupUiState.FromConfig(_config.StartManagerAtLogin);
         _selfStartStatus.Text = selfStartState.StatusText;
-        _selfStartStatusDetails.Text = selfStartState.StatusText;
         _selfStartToggle.Text = selfStartState.ButtonText;
         _selfStartToggle.Visible = selfStartState.ButtonVisible;
         _selfStartToggle.Enabled = selfStartState.ButtonEnabled;
@@ -259,9 +291,29 @@ public sealed class MainForm : Form
         }
     }
 
+    private static Button CreateButton(string text, bool bold = false, bool enabled = true)
+    {
+        var font = bold ? new Font(SystemFonts.DefaultFont, FontStyle.Bold) : SystemFonts.DefaultFont;
+        var textSize = TextRenderer.MeasureText(text, font, Size.Empty, TextFormatFlags.SingleLine | TextFormatFlags.NoPadding);
+        var padding = new Padding(12, 3, 12, 3);
+        return new Button
+        {
+            Text = text,
+            Font = font,
+            Margin = new Padding(4),
+            Padding = padding,
+            Enabled = enabled,
+            AutoSize = false,
+            Width = textSize.Width + padding.Horizontal + 20,
+            Height = textSize.Height + padding.Vertical + 10,
+            TextAlign = ContentAlignment.MiddleCenter
+        };
+    }
+
     private static void AddLabeled(Control parent, string label, Control control)
     {
-        parent.Controls.Add(new Label { Text = label, Dock = DockStyle.Top, AutoSize = true, Margin = new Padding(0, 8, 0, 2) });
+        parent.Controls.Add(new Label { Text = label, Dock = DockStyle.Top, AutoSize = true, Margin = LabelMargin, BackColor = SystemColors.Window });
+        control.Margin = new Padding(0, 0, 0, 2);
         parent.Controls.Add(control);
     }
 
@@ -304,7 +356,27 @@ public sealed class MainForm : Form
     private void LoadSelectedIntoDetails()
     {
         var item = SelectedItem;
-        if (item is null) return;
+        var hasSelection = item is not null;
+        foreach (var button in _actionButtons)
+        {
+            button.Enabled = hasSelection;
+        }
+        if (_deleteButton is not null)
+        {
+            _deleteButton.Enabled = hasSelection;
+        }
+
+        if (_details is not null)
+        {
+            _details.Visible = hasSelection;
+        }
+        _detailsEmptyState.Visible = !hasSelection;
+        if (item is null)
+        {
+            _detailsEmptyState.BringToFront();
+            return;
+        }
+
         _name.Text = item.Name;
         _path.Text = item.Path;
         _arguments.Text = item.Arguments;
@@ -377,9 +449,20 @@ public sealed class MainForm : Form
         LoadSelectedIntoDetails();
     }
 
-    private void StopSelected()
+    private async Task StopSelectedAsync()
     {
-        MessageBox.Show(this, "当前版本不跟踪已启动进程，无法可靠停止。请在任务管理器或目标程序中结束。", "无法停止", MessageBoxButtons.OK, MessageBoxIcon.Information);
+        var item = SelectedItem;
+        if (item is null) return;
+
+        var stopped = await _itemStopper.StopAsync(_config, item);
+        RefreshList();
+        RestoreSelection(item.Id);
+        LoadSelectedIntoDetails();
+
+        if (!stopped && !string.IsNullOrWhiteSpace(item.LastTaskError))
+        {
+            MessageBox.Show(this, item.LastTaskError, "停止失败", MessageBoxButtons.OK, MessageBoxIcon.Information);
+        }
     }
 
     private void OpenSelectedLogs()

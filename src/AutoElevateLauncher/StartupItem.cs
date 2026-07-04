@@ -12,6 +12,7 @@ public enum StartupItemStatus
     Running,
     Succeeded,
     Failed,
+    Stopped,
     Unknown
 }
 
@@ -37,6 +38,7 @@ public sealed class StartupItem
     public DateTimeOffset? LastRunStartedAt { get; set; }
     public DateTimeOffset? LastRunFinishedAt { get; set; }
     public int? LastExitCode { get; set; }
+    public int? LastProcessId { get; set; }
     public StartupItemStatus LastStatus { get; set; } = StartupItemStatus.NeverRun;
 
     public void EnsureTaskName()

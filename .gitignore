@@ -35,3 +35,7 @@ Desktop.ini
 .DS_Store
 # opencode session config
 .opencode/
+
+# Local agent/planning artifacts
+.superpowers/
+docs/superpowers/

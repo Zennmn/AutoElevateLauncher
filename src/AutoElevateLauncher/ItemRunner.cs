@@ -31,6 +31,7 @@ public sealed class ItemRunner : IStartupItemLauncher
         item.LastRunStartedAt = DateTimeOffset.Now;
         item.LastRunFinishedAt = null;
         item.LastExitCode = null;
+        item.LastProcessId = null;
         item.LastStatus = StartupItemStatus.Running;
         item.LastTaskError = string.Empty;
         _configStore.Save(config);
@@ -38,8 +39,8 @@ public sealed class ItemRunner : IStartupItemLauncher
         try
         {
             var exitCode = item.Type == StartupItemType.PowerShellScript
-                ? await RunPowerShellAsync(item, logPath, cancellationToken)
-                : await RunExecutableAsync(item, logPath, cancellationToken);
+                ? await RunPowerShellAsync(config, item, logPath, _configStore, cancellationToken)
+                : await RunExecutableAsync(config, item, logPath, _configStore, cancellationToken);
 
             item.LastRunFinishedAt = DateTimeOffset.Now;
             item.LastExitCode = exitCode;
@@ -80,7 +81,7 @@ public sealed class ItemRunner : IStartupItemLauncher
         };
     }
 
-    private static async Task<int> RunPowerShellAsync(StartupItem item, string logPath, CancellationToken cancellationToken)
+    private static async Task<int> RunPowerShellAsync(StartupConfig config, StartupItem item, string logPath, ConfigStore configStore, CancellationToken cancellationToken)
     {
         var startInfo = new ProcessStartInfo
         {
@@ -95,6 +96,8 @@ public sealed class ItemRunner : IStartupItemLauncher
 
         await File.WriteAllTextAsync(logPath, BuildHeader(item, startInfo), cancellationToken);
         using var process = Process.Start(startInfo) ?? throw new InvalidOperationException("Failed to start powershell.exe.");
+        item.LastProcessId = process.Id;
+        configStore.Save(config);
         var stdoutTask = process.StandardOutput.ReadToEndAsync(cancellationToken);
         var stderrTask = process.StandardError.ReadToEndAsync(cancellationToken);
         await process.WaitForExitAsync(cancellationToken);
@@ -106,11 +109,13 @@ public sealed class ItemRunner : IStartupItemLauncher
         return process.ExitCode;
     }
 
-    private static async Task<int> RunExecutableAsync(StartupItem item, string logPath, CancellationToken cancellationToken)
+    private static async Task<int> RunExecutableAsync(StartupConfig config, StartupItem item, string logPath, ConfigStore configStore, CancellationToken cancellationToken)
     {
         var startInfo = BuildExecutableStartInfo(item);
         await File.WriteAllTextAsync(logPath, BuildHeader(item, startInfo), cancellationToken);
         using var process = Process.Start(startInfo) ?? throw new InvalidOperationException($"Failed to start {item.Path}.");
+        item.LastProcessId = process.Id;
+        configStore.Save(config);
         await File.AppendAllTextAsync(logPath, $"ProcessId: {process.Id}{Environment.NewLine}", cancellationToken);
         return 0;
     }
