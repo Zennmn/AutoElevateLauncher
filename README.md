@@ -18,6 +18,8 @@
 - 配置：`%AppData%\AutoElevateLauncher\config.json`
 - 日志：`%AppData%\AutoElevateLauncher\logs\`
 
+窗口大小、位置和左右分栏宽度也会保存在同一个配置文件中。
+
 ## 使用方法
 
 1. 启动 `AutoElevateLauncher.exe`。
