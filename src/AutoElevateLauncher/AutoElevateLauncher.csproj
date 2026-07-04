@@ -8,4 +8,8 @@
     <AssemblyName>AutoElevateLauncher</AssemblyName>
     <RootNamespace>AutoElevateLauncher</RootNamespace>
   </PropertyGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="AutoElevateLauncher.Tests" />
+  </ItemGroup>
 </Project>

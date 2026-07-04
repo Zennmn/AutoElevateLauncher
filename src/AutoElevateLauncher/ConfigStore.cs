@@ -9,9 +9,24 @@ public sealed class ConfigStore
         WriteIndented = true
     };
 
+    private readonly string _appDataDirectory;
+    private readonly string _configFile;
+    private readonly string _logsDirectory;
+
+    public ConfigStore() : this(AppPaths.AppDataDirectory)
+    {
+    }
+
+    internal ConfigStore(string appDataDirectory)
+    {
+        _appDataDirectory = appDataDirectory;
+        _configFile = Path.Combine(appDataDirectory, "config.json");
+        _logsDirectory = Path.Combine(appDataDirectory, "logs");
+    }
+
     public StartupConfig Load()
     {
-        if (!File.Exists(AppPaths.ConfigFile))
+        if (!File.Exists(_configFile))
         {
             return new StartupConfig();
         }
@@ -19,11 +34,10 @@ public sealed class ConfigStore
         string json;
         try
         {
-            json = File.ReadAllText(AppPaths.ConfigFile);
+            json = File.ReadAllText(_configFile);
         }
         catch (IOException)
         {
-            // Config file is unreadable; start with an empty config rather than crashing the app.
             return new StartupConfig();
         }
 
@@ -33,38 +47,34 @@ public sealed class ConfigStore
         }
         catch (JsonException)
         {
-            // Corrupted config: back up the bad file (so the invalid content is preserved) and
-            // start fresh so the app keeps running instead of crashing on every launch.
             BackUpCorruptedConfig();
             return new StartupConfig();
         }
     }
 
-    private static void BackUpCorruptedConfig()
+    private void BackUpCorruptedConfig()
     {
         try
         {
-            var directory = AppPaths.AppDataDirectory;
             var baseName = $"config.json.bad-{DateTimeOffset.Now:yyyyMMdd-HHmmss}";
-            var path = Path.Combine(directory, baseName);
+            var path = Path.Combine(_appDataDirectory, baseName);
             var counter = 1;
             while (File.Exists(path))
             {
-                path = Path.Combine(directory, $"{baseName}-{counter}");
+                path = Path.Combine(_appDataDirectory, $"{baseName}-{counter}");
                 counter++;
             }
-            File.Move(AppPaths.ConfigFile, path);
+            File.Move(_configFile, path);
         }
         catch
         {
-            // Best-effort backup; if moving fails we still return an empty config to keep the app alive.
         }
     }
 
     public void Save(StartupConfig config)
     {
-        Directory.CreateDirectory(AppPaths.AppDataDirectory);
-        Directory.CreateDirectory(AppPaths.LogsDirectory);
+        Directory.CreateDirectory(_appDataDirectory);
+        Directory.CreateDirectory(_logsDirectory);
 
         foreach (var item in config.Items)
         {
@@ -72,6 +82,26 @@ public sealed class ConfigStore
         }
 
         var json = JsonSerializer.Serialize(config, JsonOptions);
-        File.WriteAllText(AppPaths.ConfigFile, json);
+        var tempPath = Path.Combine(_appDataDirectory, $"config.{Guid.NewGuid():N}.tmp");
+        File.WriteAllText(tempPath, json);
+
+        try
+        {
+            if (File.Exists(_configFile))
+            {
+                File.Replace(tempPath, _configFile, null);
+            }
+            else
+            {
+                File.Move(tempPath, _configFile);
+            }
+        }
+        finally
+        {
+            if (File.Exists(tempPath))
+            {
+                File.Delete(tempPath);
+            }
+        }
     }
 }

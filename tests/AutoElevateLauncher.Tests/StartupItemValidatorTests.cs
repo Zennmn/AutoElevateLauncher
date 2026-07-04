@@ -10,46 +10,33 @@ public sealed class StartupItemValidatorTests
         var script = Path.Combine(Path.GetTempPath(), Guid.NewGuid() + ".ps1");
         File.WriteAllText(script, "Write-Output 'ok'");
 
-        var item = new StartupItem
+        try
         {
-            Name = "Script",
-            Type = StartupItemType.PowerShellScript,
-            Path = script,
-            WorkingDirectory = Path.GetDirectoryName(script)!
-        };
+            var item = new StartupItem
+            {
+                Name = "脚本",
+                Type = StartupItemType.PowerShellScript,
+                Path = script,
+                WorkingDirectory = Path.GetDirectoryName(script)!
+            };
 
-        var result = StartupItemValidator.Validate(item);
+            var result = StartupItemValidator.Validate(item);
 
-        Assert.True(result.IsValid);
-        Assert.Empty(result.Errors);
+            Assert.True(result.IsValid);
+            Assert.Empty(result.Errors);
+        }
+        finally
+        {
+            File.Delete(script);
+        }
     }
 
     [Fact]
-    public void Validate_RejectsWrongExtensionForExecutable()
-    {
-        var script = Path.Combine(Path.GetTempPath(), Guid.NewGuid() + ".ps1");
-        File.WriteAllText(script, "Write-Output 'ok'");
-
-        var item = new StartupItem
-        {
-            Name = "Wrong Type",
-            Type = StartupItemType.Executable,
-            Path = script,
-            WorkingDirectory = Path.GetDirectoryName(script)!
-        };
-
-        var result = StartupItemValidator.Validate(item);
-
-        Assert.False(result.IsValid);
-        Assert.Contains(result.Errors, error => error.Contains(".exe", StringComparison.OrdinalIgnoreCase));
-    }
-
-    [Fact]
-    public void Validate_RejectsMissingPath()
+    public void Validate_RejectsMissingNameWithChineseMessage()
     {
         var item = new StartupItem
         {
-            Name = "Missing",
+            Name = "",
             Type = StartupItemType.PowerShellScript,
             Path = Path.Combine(Path.GetTempPath(), Guid.NewGuid() + ".ps1")
         };
@@ -57,6 +44,50 @@ public sealed class StartupItemValidatorTests
         var result = StartupItemValidator.Validate(item);
 
         Assert.False(result.IsValid);
-        Assert.Contains(result.Errors, error => error.Contains("does not exist", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains("名称不能为空。", result.Errors);
+    }
+
+    [Fact]
+    public void Validate_RejectsWrongExtensionForExecutableWithChineseMessage()
+    {
+        var script = Path.Combine(Path.GetTempPath(), Guid.NewGuid() + ".ps1");
+        File.WriteAllText(script, "Write-Output 'ok'");
+
+        try
+        {
+            var item = new StartupItem
+            {
+                Name = "类型错误",
+                Type = StartupItemType.Executable,
+                Path = script,
+                WorkingDirectory = Path.GetDirectoryName(script)!
+            };
+
+            var result = StartupItemValidator.Validate(item);
+
+            Assert.False(result.IsValid);
+            Assert.Contains(result.Errors, error => error.Contains("可执行程序项目必须使用 .exe 文件", StringComparison.Ordinal));
+        }
+        finally
+        {
+            File.Delete(script);
+        }
+    }
+
+    [Fact]
+    public void Validate_RejectsMissingPathWithChineseMessage()
+    {
+        var missingPath = Path.Combine(Path.GetTempPath(), Guid.NewGuid() + ".ps1");
+        var item = new StartupItem
+        {
+            Name = "缺失文件",
+            Type = StartupItemType.PowerShellScript,
+            Path = missingPath
+        };
+
+        var result = StartupItemValidator.Validate(item);
+
+        Assert.False(result.IsValid);
+        Assert.Contains($"文件不存在：{missingPath}", result.Errors);
     }
 }

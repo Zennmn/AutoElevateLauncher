@@ -29,4 +29,15 @@ public sealed class TaskXmlBuilderTests
 
         Assert.Contains("<Enabled>false</Enabled>", xml);
     }
+
+    [Fact]
+    public void BuildManagerSelfStartTaskXml_UsesHighestAvailablePrivileges()
+    {
+        var xml = TaskXmlBuilder.BuildManagerSelfStartTaskXml("C:\\Tools\\AutoElevateLauncher.exe", "TEST-PC\\me");
+
+        Assert.Contains("<LogonTrigger>", xml);
+        Assert.Contains("<RunLevel>HighestAvailable</RunLevel>", xml);
+        Assert.Contains("<Command>C:\\Tools\\AutoElevateLauncher.exe</Command>", xml);
+        Assert.DoesNotContain("<Arguments>", xml);
+    }
 }

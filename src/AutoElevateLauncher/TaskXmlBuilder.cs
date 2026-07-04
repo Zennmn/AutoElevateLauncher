@@ -74,7 +74,7 @@ public static class TaskXmlBuilder
     <Principal id="Author">
       <UserId>{{Escape(userId)}}</UserId>
       <LogonType>InteractiveToken</LogonType>
-      <RunLevel>LeastAvailable</RunLevel>
+      <RunLevel>HighestAvailable</RunLevel>
     </Principal>
   </Principals>
   <Settings>
