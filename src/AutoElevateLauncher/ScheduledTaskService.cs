@@ -46,7 +46,7 @@ public sealed class ScheduledTaskService
         return _processRunner.RunElevatedAsync(appExePath, "--disable-manager-startup", cancellationToken);
     }
 
-    public static void TryDelete(string path)
+    private static void TryDelete(string path)
     {
         try
         {

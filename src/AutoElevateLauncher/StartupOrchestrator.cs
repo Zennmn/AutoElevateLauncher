@@ -29,11 +29,12 @@ public sealed class StartupOrchestrator
             {
                 await _launcher.RunAsync(config, item, cancellationToken);
             }
-            catch
+            catch (Exception ex)
             {
                 item.LastRunFinishedAt = DateTimeOffset.Now;
                 item.LastExitCode = -1;
                 item.LastStatus = StartupItemStatus.Failed;
+                item.LastTaskError = ex.Message;
             }
         }
     }

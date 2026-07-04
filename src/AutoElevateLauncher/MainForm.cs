@@ -7,7 +7,6 @@ public sealed class MainForm : Form
     private readonly ConfigStore _configStore;
     private readonly ScheduledTaskService _taskService;
     private readonly IStartupItemLauncher _itemLauncher;
-    private readonly StartupOrchestrator _startupOrchestrator;
     private StartupConfig _config;
     private readonly DataGridView _items = new()
     {
@@ -25,22 +24,28 @@ public sealed class MainForm : Form
     private readonly TextBox _arguments = new() { Dock = DockStyle.Top };
     private readonly TextBox _workingDirectory = new() { Dock = DockStyle.Top };
     private readonly CheckBox _enabled = new() { Text = "启用此项目", Dock = DockStyle.Top };
-    private readonly Label _status = new() { Dock = DockStyle.Top, AutoSize = true };
     private readonly Label _permissionStatus = new() { Dock = DockStyle.Top, AutoSize = true };
     private readonly Label _selfStartStatus = new() { Dock = DockStyle.Top, AutoSize = true };
+    private readonly Button _selfStartToggle = new() { Dock = DockStyle.Top, Width = 160, Height = 32 };
+    private readonly Label _typeDisplay = new() { Dock = DockStyle.Top, AutoSize = true };
+    private readonly Label _recentStart = new() { Dock = DockStyle.Top, AutoSize = true };
+    private readonly Label _recentEnd = new() { Dock = DockStyle.Top, AutoSize = true };
+    private readonly Label _exitCode = new() { Dock = DockStyle.Top, AutoSize = true };
+    private readonly Label _lastStatus = new() { Dock = DockStyle.Top, AutoSize = true };
+    private readonly Label _lastError = new() { Dock = DockStyle.Top, AutoSize = true };
 
-    public MainForm(StartupConfig config, ConfigStore configStore, ScheduledTaskService taskService, IStartupItemLauncher itemLauncher, StartupOrchestrator startupOrchestrator)
+    public MainForm(StartupConfig config, ConfigStore configStore, ScheduledTaskService taskService, IStartupItemLauncher itemLauncher)
     {
         _configStore = configStore;
         _taskService = taskService;
         _itemLauncher = itemLauncher;
-        _startupOrchestrator = startupOrchestrator;
         _config = config;
 
         Text = "管理员自启动器";
         Width = 1000;
         Height = 650;
         BuildLayout();
+        _selfStartToggle.Click += async (_, _) => await ToggleSelfStartAsync();
         RefreshStatusLabels();
         RefreshList();
     }
@@ -56,6 +61,7 @@ public sealed class MainForm : Form
         _items.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = "最近状态", DataPropertyName = nameof(StartupItem.LastStatus), AutoSizeMode = DataGridViewAutoSizeColumnMode.Fill });
 
         var leftButtons = new FlowLayoutPanel { Dock = DockStyle.Top, Height = 72 };
+        var leftTitle = new Label { Text = "启动项目", Dock = DockStyle.Top, AutoSize = true, Font = new Font(SystemFonts.DefaultFont, FontStyle.Bold) };
         var addScript = new Button { Text = "新增脚本", Width = 100 };
         var addProgram = new Button { Text = "新增程序", Width = 100 };
         var delete = new Button { Text = "删除", Width = 80 };
@@ -66,18 +72,26 @@ public sealed class MainForm : Form
 
         split.Panel1.Controls.Add(_items);
         split.Panel1.Controls.Add(leftButtons);
+        split.Panel1.Controls.Add(leftTitle);
         _items.SelectionChanged += (_, _) => LoadSelectedIntoDetails();
 
-        var details = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 1, RowCount = 14, Padding = new Padding(12) };
+        var details = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 1, RowCount = 27, Padding = new Padding(12) };
         split.Panel2.Controls.Add(details);
+        details.Controls.Add(new Label { Text = "项目详情", Dock = DockStyle.Top, AutoSize = true, Font = new Font(SystemFonts.DefaultFont, FontStyle.Bold) });
         details.Controls.Add(_permissionStatus);
         details.Controls.Add(_selfStartStatus);
+        details.Controls.Add(_selfStartToggle);
         AddLabeled(details, "名称", _name);
+        AddLabeled(details, "类型", _typeDisplay);
         AddLabeled(details, "路径", _path);
         AddLabeled(details, "参数", _arguments);
         AddLabeled(details, "工作目录", _workingDirectory);
         details.Controls.Add(_enabled);
-        details.Controls.Add(_status);
+        AddLabeled(details, "最近启动", _recentStart);
+        AddLabeled(details, "最近结束", _recentEnd);
+        AddLabeled(details, "退出码", _exitCode);
+        AddLabeled(details, "状态", _lastStatus);
+        AddLabeled(details, "最后错误", _lastError);
 
         var actions = new FlowLayoutPanel { Dock = DockStyle.Top, Height = 42 };
         var save = new Button { Text = "保存", Width = 80 };
@@ -96,6 +110,43 @@ public sealed class MainForm : Form
     {
         _permissionStatus.Text = WindowsPrivilege.IsCurrentProcessAdministrator() ? "当前权限：管理员" : "当前权限：普通用户";
         _selfStartStatus.Text = _config.StartManagerAtLogin ? "管理员开机自启：已启用" : "管理员开机自启：未启用";
+        _selfStartToggle.Text = _config.StartManagerAtLogin ? "关闭管理员自启" : "启用管理员自启";
+    }
+
+    private async Task ToggleSelfStartAsync()
+    {
+        if (_config.StartManagerAtLogin)
+        {
+            var result = WindowsPrivilege.IsCurrentProcessAdministrator()
+                ? await _taskService.DeleteManagerSelfStartTaskAsync()
+                : await _taskService.DisableManagerSelfStartElevatedAsync(Application.ExecutablePath);
+            if (result.Succeeded)
+            {
+                _config.StartManagerAtLogin = false;
+                _configStore.Save(_config);
+                RefreshStatusLabels();
+            }
+            else
+            {
+                MessageBox.Show(result.StandardError + Environment.NewLine + result.StandardOutput, "关闭管理员开机自启失败", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            }
+        }
+        else
+        {
+            var result = WindowsPrivilege.IsCurrentProcessAdministrator()
+                ? await _taskService.CreateOrUpdateManagerSelfStartTaskAsync(Application.ExecutablePath)
+                : await _taskService.EnableManagerSelfStartElevatedAsync(Application.ExecutablePath);
+            if (result.Succeeded)
+            {
+                _config.StartManagerAtLogin = true;
+                _configStore.Save(_config);
+                RefreshStatusLabels();
+            }
+            else
+            {
+                MessageBox.Show(result.StandardError + Environment.NewLine + result.StandardOutput, "启用管理员开机自启失败", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            }
+        }
     }
 
     private static void AddLabeled(Control parent, string label, Control control)
@@ -147,7 +198,12 @@ public sealed class MainForm : Form
         _arguments.Text = item.Arguments;
         _workingDirectory.Text = item.WorkingDirectory;
         _enabled.Checked = item.Enabled;
-        _status.Text = $"状态：{item.LastStatus}；退出码：{item.LastExitCode?.ToString() ?? ""}；最近启动：{item.LastRunStartedAt}";
+        _typeDisplay.Text = item.Type == StartupItemType.PowerShellScript ? "PowerShell 脚本" : "可执行程序";
+        _recentStart.Text = item.LastRunStartedAt.HasValue ? item.LastRunStartedAt.Value.ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss") : "";
+        _recentEnd.Text = item.LastRunFinishedAt.HasValue ? item.LastRunFinishedAt.Value.ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss") : "";
+        _exitCode.Text = item.LastExitCode?.ToString() ?? "";
+        _lastStatus.Text = item.LastStatus.ToString();
+        _lastError.Text = item.LastTaskError;
     }
 
     private async Task SaveSelectedAsync()
