@@ -2,7 +2,7 @@ using System.Diagnostics;
 
 namespace AutoElevateLauncher;
 
-public sealed class ItemRunner
+public sealed class ItemRunner : IStartupItemLauncher
 {
     private readonly ConfigStore _configStore;
 
@@ -20,6 +20,11 @@ public sealed class ItemRunner
             return 2;
         }
 
+        return await RunAsync(config, item, cancellationToken);
+    }
+
+    public async Task<int> RunAsync(StartupConfig config, StartupItem item, CancellationToken cancellationToken = default)
+    {
         Directory.CreateDirectory(AppPaths.GetItemLogDirectory(item.Id));
         var logPath = Path.Combine(AppPaths.GetItemLogDirectory(item.Id), DateTimeOffset.Now.ToString("yyyyMMdd-HHmmss-fffffff") + ".log");
 

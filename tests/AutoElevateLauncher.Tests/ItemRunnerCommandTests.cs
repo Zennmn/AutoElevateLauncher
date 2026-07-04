@@ -39,4 +39,12 @@ public sealed class ItemRunnerCommandTests
         Assert.Equal("C:\\Tools", startInfo.WorkingDirectory);
         Assert.False(startInfo.UseShellExecute);
     }
+
+    [Fact]
+    public void ItemRunner_ImplementsStartupItemLauncher()
+    {
+        IStartupItemLauncher launcher = new ItemRunner(new ConfigStore());
+
+        Assert.IsType<ItemRunner>(launcher);
+    }
 }
