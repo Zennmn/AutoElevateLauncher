@@ -23,6 +23,118 @@ public sealed class MainViewModelTests
     }
 
     [Fact]
+    public async Task MainViewModel_AddOrUpdateTaskAsync_WhenNewTaskSaveFails_RollsBackAndLogs()
+    {
+        var config = new FakeTaskConfigService { SaveException = new IOException("save failed") };
+        var log = new FakeLogService();
+        var viewModel = CreateViewModel(config, logService: log);
+        var task = new ManagedTask { Name = "New" };
+
+        await Assert.ThrowsAsync<IOException>(() => viewModel.AddOrUpdateTaskAsync(task));
+
+        Assert.Empty(viewModel.Tasks);
+        Assert.Contains(log.Errors, entry =>
+            entry.Message.Contains("Could not save task 'New'.") &&
+            entry.Exception is IOException);
+    }
+
+    [Fact]
+    public async Task MainViewModel_AddOrUpdateTaskAsync_WhenExistingTaskSaveFails_RollsBackAndLogs()
+    {
+        var config = new FakeTaskConfigService { SaveException = new IOException("save failed") };
+        var log = new FakeLogService();
+        var existing = new ManagedTask
+        {
+            Name = "Existing",
+            Type = ManagedTaskType.PowerShellScript,
+            Path = "old.ps1",
+            Arguments = "-Old",
+            WorkingDirectory = "C:\\Old",
+            RunMode = ManagedTaskRunMode.RunOnce,
+            IsEnabled = true
+        };
+        var currentResult = existing.LastResult;
+        var updated = new ManagedTask
+        {
+            Id = existing.Id,
+            Name = "Updated",
+            Type = ManagedTaskType.Executable,
+            Path = "new.exe",
+            Arguments = "-New",
+            WorkingDirectory = "C:\\New",
+            RunMode = ManagedTaskRunMode.LongRunning,
+            IsEnabled = false
+        };
+        var viewModel = CreateViewModel(config, logService: log);
+        viewModel.Tasks.Add(existing);
+        viewModel.SelectedTask = existing;
+
+        await Assert.ThrowsAsync<IOException>(() => viewModel.AddOrUpdateTaskAsync(updated));
+
+        Assert.Same(existing, Assert.Single(viewModel.Tasks));
+        Assert.Same(existing, viewModel.SelectedTask);
+        Assert.Equal("Existing", existing.Name);
+        Assert.Equal(ManagedTaskType.PowerShellScript, existing.Type);
+        Assert.Equal("old.ps1", existing.Path);
+        Assert.Equal("-Old", existing.Arguments);
+        Assert.Equal("C:\\Old", existing.WorkingDirectory);
+        Assert.Equal(ManagedTaskRunMode.RunOnce, existing.RunMode);
+        Assert.True(existing.IsEnabled);
+        Assert.Same(currentResult, existing.LastResult);
+        Assert.Contains(log.Errors, entry =>
+            entry.Message.Contains("Could not save task 'Updated'.") &&
+            entry.Exception is IOException);
+    }
+
+    [Fact]
+    public async Task MainViewModel_AddOrUpdateTaskAsync_UpdateExistingTaskKeepsReferenceAndUpdatesEditableFields()
+    {
+        var config = new FakeTaskConfigService();
+        var existing = new ManagedTask
+        {
+            Name = "Existing",
+            Type = ManagedTaskType.PowerShellScript,
+            Path = "old.ps1",
+            Arguments = "-Old",
+            WorkingDirectory = "C:\\Old",
+            RunMode = ManagedTaskRunMode.RunOnce,
+            IsEnabled = true
+        };
+        var currentResult = existing.LastResult;
+        currentResult.Status = TaskRuntimeStatus.Running;
+        var updated = new ManagedTask
+        {
+            Id = existing.Id,
+            Name = "Updated",
+            Type = ManagedTaskType.Executable,
+            Path = "new.exe",
+            Arguments = "-New",
+            WorkingDirectory = "C:\\New",
+            RunMode = ManagedTaskRunMode.LongRunning,
+            IsEnabled = false,
+            LastResult = new TaskRuntimeResult { Status = TaskRuntimeStatus.Exited, ExitCode = 1 }
+        };
+        var viewModel = CreateViewModel(config);
+        viewModel.Tasks.Add(existing);
+        viewModel.SelectedTask = existing;
+
+        await viewModel.AddOrUpdateTaskAsync(updated);
+
+        Assert.Same(existing, Assert.Single(viewModel.Tasks));
+        Assert.Same(existing, viewModel.SelectedTask);
+        Assert.Equal("Updated", existing.Name);
+        Assert.Equal(ManagedTaskType.Executable, existing.Type);
+        Assert.Equal("new.exe", existing.Path);
+        Assert.Equal("-New", existing.Arguments);
+        Assert.Equal("C:\\New", existing.WorkingDirectory);
+        Assert.Equal(ManagedTaskRunMode.LongRunning, existing.RunMode);
+        Assert.False(existing.IsEnabled);
+        Assert.Same(currentResult, existing.LastResult);
+        Assert.Equal(TaskRuntimeStatus.Running, existing.LastResult.Status);
+        Assert.Same(existing, Assert.Single(config.LastSavedTasks));
+    }
+
+    [Fact]
     public void MainViewModel_RunAllEnabled_RunsOnlyEnabledTasks()
     {
         var processRunner = new FakeProcessRunner();

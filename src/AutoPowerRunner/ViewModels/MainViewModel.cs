@@ -117,14 +117,35 @@ public sealed class MainViewModel : INotifyPropertyChanged
         if (existing is null)
         {
             Tasks.Add(task);
-        }
-        else
-        {
-            var index = Tasks.IndexOf(existing);
-            Tasks[index] = task;
+            try
+            {
+                await SaveAsync();
+            }
+            catch (Exception ex)
+            {
+                Tasks.Remove(task);
+                _logService.Error($"Could not save task '{task.Name}'.", ex);
+                throw;
+            }
+
+            return;
         }
 
-        await SaveAsync();
+        var previousSelectedTask = SelectedTask;
+        var previousState = existing.Clone();
+
+        UpdateEditableTaskFields(existing, task);
+        try
+        {
+            await SaveAsync();
+        }
+        catch (Exception ex)
+        {
+            UpdateEditableTaskFields(existing, previousState);
+            SelectedTask = previousSelectedTask;
+            _logService.Error($"Could not save task '{task.Name}'.", ex);
+            throw;
+        }
     }
 
     public void RunAllEnabled()
@@ -237,6 +258,17 @@ public sealed class MainViewModel : INotifyPropertyChanged
         {
             _logService.Error($"Could not run task '{task.Name}'.", ex);
         }
+    }
+
+    private static void UpdateEditableTaskFields(ManagedTask target, ManagedTask source)
+    {
+        target.Name = source.Name;
+        target.Type = source.Type;
+        target.Path = source.Path;
+        target.Arguments = source.Arguments;
+        target.WorkingDirectory = source.WorkingDirectory;
+        target.RunMode = source.RunMode;
+        target.IsEnabled = source.IsEnabled;
     }
 
     private void NotifyTasksChangedFromProcessCallback()

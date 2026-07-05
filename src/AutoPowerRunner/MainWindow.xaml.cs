@@ -34,7 +34,14 @@ public partial class MainWindow : Window
         var editor = new TaskEditorWindow { Owner = this };
         if (editor.ShowDialog() == true)
         {
-            await _viewModel.AddOrUpdateTaskAsync(editor.Result);
+            try
+            {
+                await _viewModel.AddOrUpdateTaskAsync(editor.Result);
+            }
+            catch (Exception ex)
+            {
+                ShowError("Could not save the task.", ex);
+            }
         }
     }
 
@@ -48,7 +55,14 @@ public partial class MainWindow : Window
         var editor = new TaskEditorWindow(_viewModel.SelectedTask) { Owner = this };
         if (editor.ShowDialog() == true)
         {
-            await _viewModel.AddOrUpdateTaskAsync(editor.Result);
+            try
+            {
+                await _viewModel.AddOrUpdateTaskAsync(editor.Result);
+            }
+            catch (Exception ex)
+            {
+                ShowError("Could not save the task.", ex);
+            }
         }
     }
 
@@ -60,10 +74,17 @@ public partial class MainWindow : Window
             return;
         }
 
-        Process.Start(new ProcessStartInfo(_viewModel.LogFile)
+        try
         {
-            UseShellExecute = true
-        });
+            Process.Start(new ProcessStartInfo(_viewModel.LogFile)
+            {
+                UseShellExecute = true
+            });
+        }
+        catch (Exception ex)
+        {
+            ShowError("Could not open the log file.", ex);
+        }
     }
 
     protected override void OnClosing(CancelEventArgs e)
@@ -76,5 +97,10 @@ public partial class MainWindow : Window
         }
 
         base.OnClosing(e);
+    }
+
+    private void ShowError(string message, Exception exception)
+    {
+        MessageBox.Show(this, $"{message}{Environment.NewLine}{exception.Message}", "Auto Power Runner", MessageBoxButton.OK, MessageBoxImage.Error);
     }
 }
