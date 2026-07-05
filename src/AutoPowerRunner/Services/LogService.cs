@@ -1,15 +1,19 @@
+using System.Collections.Concurrent;
 using System.IO;
 
 namespace AutoPowerRunner.Services;
 
 public sealed class LogService
 {
+    private static readonly ConcurrentDictionary<string, object> PathLocks = new(StringComparer.OrdinalIgnoreCase);
+
     private readonly string _logFile;
-    private readonly object _gate = new();
+    private readonly object _gate;
 
     public LogService(AppPaths paths)
     {
         _logFile = paths.LogFile;
+        _gate = PathLocks.GetOrAdd(Path.GetFullPath(_logFile), static _ => new object());
     }
 
     public string LogFile => _logFile;

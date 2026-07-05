@@ -1,4 +1,5 @@
 using System.Text.Json;
+using System.Text.RegularExpressions;
 using AutoPowerRunner.Models;
 using AutoPowerRunner.Services;
 
@@ -106,17 +107,94 @@ public sealed class TaskConfigServiceTests
     }
 
     [Fact]
-    public async Task TaskConfigService_BacksUpDamagedConfigAndReturnsEmptyList()
+    public async Task TaskConfigService_ReturnsEmptyListWhenConfigIsMissing()
     {
         using var temp = new TempDirectory();
-        Directory.CreateDirectory(temp.Path);
-        await File.WriteAllTextAsync(System.IO.Path.Combine(temp.Path, "config.json"), "{not valid json");
         var service = new TaskConfigService(temp.Path);
 
         var loaded = await service.LoadAsync();
 
         Assert.Empty(loaded);
-        Assert.Contains(Directory.GetFiles(temp.Path), path => path.Contains("config.corrupt.", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
+    public async Task TaskConfigService_BacksUpDamagedConfigAndReturnsEmptyList()
+    {
+        using var temp = new TempDirectory();
+        Directory.CreateDirectory(temp.Path);
+        const string damagedConfig = "{not valid json";
+        var configFile = System.IO.Path.Combine(temp.Path, "config.json");
+        await File.WriteAllTextAsync(configFile, damagedConfig);
+        var service = new TaskConfigService(temp.Path);
+
+        var loaded = await service.LoadAsync();
+        var backup = Assert.Single(Directory.GetFiles(temp.Path, "config.corrupt.*.json"));
+
+        Assert.Empty(loaded);
+        Assert.False(File.Exists(configFile));
+        Assert.Equal(damagedConfig, await File.ReadAllTextAsync(backup));
+        Assert.Matches(
+            new Regex(@"^config\.corrupt\.\d{17}\.[0-9a-f]{32}\.json$", RegexOptions.IgnoreCase),
+            System.IO.Path.GetFileName(backup));
+    }
+
+    [Fact]
+    public async Task TaskConfigService_OverwritesExistingConfigWithNewTasks()
+    {
+        using var temp = new TempDirectory();
+        var service = new TaskConfigService(temp.Path);
+        await service.SaveAsync(
+        [
+            new ManagedTask { Name = "Old", Type = ManagedTaskType.PowerShellScript, Path = @"C:\Scripts\old.ps1" }
+        ]);
+
+        await service.SaveAsync(
+        [
+            new ManagedTask { Name = "New", Type = ManagedTaskType.Executable, Path = @"C:\Tools\new.exe", IsEnabled = false }
+        ]);
+
+        var loaded = await service.LoadAsync();
+
+        var task = Assert.Single(loaded);
+        Assert.Equal("New", task.Name);
+        Assert.Equal(ManagedTaskType.Executable, task.Type);
+        Assert.False(task.IsEnabled);
+    }
+
+    [Fact]
+    public void LogService_CreatesDirectoryAndWritesInfoAndError()
+    {
+        using var temp = new TempDirectory();
+        var paths = new AppPaths(temp.Path, temp.Path);
+        var service = new LogService(paths);
+        var exception = new InvalidOperationException("boom");
+
+        service.Info("Started");
+        service.Error("Failed", exception);
+
+        Assert.True(File.Exists(service.LogFile));
+        var log = File.ReadAllText(service.LogFile);
+        Assert.Contains("[INFO] Started", log);
+        Assert.Contains("[ERROR] Failed InvalidOperationException: boom", log);
+    }
+
+    [Fact]
+    public async Task LogService_SerializesWritesAcrossInstancesForSamePath()
+    {
+        using var temp = new TempDirectory();
+        var paths = new AppPaths(temp.Path, temp.Path);
+        var services = Enumerable.Range(0, 4)
+            .Select(_ => new LogService(paths))
+            .ToArray();
+
+        await Task.WhenAll(Enumerable.Range(0, 100).Select(index => Task.Run(() =>
+        {
+            services[index % services.Length].Info($"Entry {index}");
+        })));
+
+        var lines = File.ReadAllLines(paths.LogFile);
+        Assert.Equal(100, lines.Length);
+        Assert.All(lines, line => Assert.Matches(@"^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2} .+ \[INFO\] Entry \d+$", line));
     }
 
     private sealed class TempDirectory : IDisposable

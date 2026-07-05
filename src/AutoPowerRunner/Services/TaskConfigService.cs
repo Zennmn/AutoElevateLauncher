@@ -48,24 +48,36 @@ public sealed class TaskConfigService
     public async Task SaveAsync(IReadOnlyCollection<ManagedTask> tasks, CancellationToken cancellationToken = default)
     {
         Directory.CreateDirectory(_configDirectory);
-        var tempFile = _configFile + ".tmp";
-        await using (var stream = File.Create(tempFile))
-        {
-            await JsonSerializer.SerializeAsync(stream, tasks, _jsonOptions, cancellationToken);
-        }
+        var tempFile = $"{_configFile}.{Guid.NewGuid():N}.tmp";
 
-        if (File.Exists(_configFile))
+        try
         {
-            File.Delete(_configFile);
-        }
+            await using (var stream = File.Create(tempFile))
+            {
+                await JsonSerializer.SerializeAsync(stream, tasks, _jsonOptions, cancellationToken);
+            }
 
-        File.Move(tempFile, _configFile);
+            if (File.Exists(_configFile))
+            {
+                File.Replace(tempFile, _configFile, null);
+            }
+            else
+            {
+                File.Move(tempFile, _configFile);
+            }
+        }
+        finally
+        {
+            if (File.Exists(tempFile))
+            {
+                File.Delete(tempFile);
+            }
+        }
     }
 
     private void BackupCorruptConfig()
     {
-        var stamp = DateTimeOffset.Now.ToString("yyyyMMddHHmmss");
-        var backupPath = Path.Combine(_configDirectory, $"config.corrupt.{stamp}.json");
-        File.Move(_configFile, backupPath, overwrite: true);
+        var backupPath = Path.Combine(_configDirectory, $"config.corrupt.{DateTimeOffset.Now:yyyyMMddHHmmssfff}.{Guid.NewGuid():N}.json");
+        File.Move(_configFile, backupPath);
     }
 }
