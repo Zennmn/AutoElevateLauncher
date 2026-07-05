@@ -1,41 +1,22 @@
-# Build output
-[Bb]in/
-[Oo]bj/
-[Dd]ebug/
-[Rr]elease/
+.worktrees/
+.codegraph/
+.vs/
+
+# .NET build output
+bin/
+obj/
+
+# Local publish/package output
+dist/
 publish/
 
-# NuGet
-*.nupkg
-*.snupkg
-.nuget/
-project.assets.json
-project.nuget.cache
-*.nuget.props
-*.nuget.targets
-packages/
+# Local app data and logs
+config.json
+*.log
 
-# Visual Studio / Rider user files
+# Local UI verification screenshots
+autopowerrunner-*.png
+
+# User/machine files
 *.user
 *.suo
-*.userosscache
-*.sln.docstates
-.vs/
-.idea/
-
-# Build logs / test results
-[Tt]est[Rr]esult*/
-[Bb]uild[Ll]og.*
-TestResults/
-
-# OS
-Thumbs.db
-ehthumbs.db
-Desktop.ini
-.DS_Store
-# opencode session config
-.opencode/
-
-# Local agent/planning artifacts
-.superpowers/
-docs/superpowers/
