@@ -144,6 +144,53 @@ public sealed class ProcessRunnerTests
     }
 
     [Fact]
+    public async Task Start_WithSynchronizationContext_DispatchesCompletionResultChanges()
+    {
+        using var temp = new TempDirectory();
+        var script = temp.WritePowerShellScript("context-completion.ps1", "Start-Sleep -Milliseconds 200; exit 3");
+        var updateContext = new CapturingSynchronizationContext();
+        var runner = new ProcessRunner(updateContext: updateContext);
+        var task = new ManagedTask
+        {
+            Name = "Context completion",
+            Type = ManagedTaskType.PowerShellScript,
+            Path = script,
+            WorkingDirectory = temp.Path
+        };
+        var directChanges = new List<string?>();
+        var dispatchedChanges = new List<string?>();
+        task.LastResult.PropertyChanged += (_, args) =>
+        {
+            if (updateContext.IsDraining)
+            {
+                dispatchedChanges.Add(args.PropertyName);
+            }
+            else
+            {
+                directChanges.Add(args.PropertyName);
+            }
+        };
+
+        using var process = runner.Start(task);
+        directChanges.Clear();
+        dispatchedChanges.Clear();
+
+        var completionPosted = await WaitUntilAsync(() => updateContext.PostedCount > 0);
+
+        Assert.True(completionPosted);
+        Assert.Empty(directChanges);
+        Assert.Equal(TaskRuntimeStatus.Running, task.LastResult.Status);
+
+        updateContext.Drain();
+
+        Assert.Equal(TaskRuntimeStatus.Exited, task.LastResult.Status);
+        Assert.Equal(3, task.LastResult.ExitCode);
+        Assert.Contains(nameof(TaskRuntimeResult.Status), dispatchedChanges);
+        Assert.Contains(nameof(TaskRuntimeResult.ExitCode), dispatchedChanges);
+        Assert.DoesNotContain(task.Id, runner.RunningTaskIds);
+    }
+
+    [Fact]
     public void Start_WhenTaskAlreadyRunning_ThrowsInvalidOperationException()
     {
         using var temp = new TempDirectory();
@@ -258,6 +305,64 @@ public sealed class ProcessRunnerTests
             if (Directory.Exists(Path))
             {
                 Directory.Delete(Path, recursive: true);
+            }
+        }
+    }
+
+    private sealed class CapturingSynchronizationContext : SynchronizationContext
+    {
+        private readonly Queue<Action> _postedCallbacks = [];
+        private readonly object _gate = new();
+
+        public int PostedCount
+        {
+            get
+            {
+                lock (_gate)
+                {
+                    return _postedCallbacks.Count;
+                }
+            }
+        }
+
+        public bool IsDraining { get; private set; }
+
+        public override void Post(SendOrPostCallback d, object? state)
+        {
+            lock (_gate)
+            {
+                _postedCallbacks.Enqueue(() => d(state));
+            }
+        }
+
+        public void Drain()
+        {
+            IsDraining = true;
+            try
+            {
+                while (TryDequeue(out var callback))
+                {
+                    callback();
+                }
+            }
+            finally
+            {
+                IsDraining = false;
+            }
+        }
+
+        private bool TryDequeue(out Action callback)
+        {
+            lock (_gate)
+            {
+                if (_postedCallbacks.Count == 0)
+                {
+                    callback = () => { };
+                    return false;
+                }
+
+                callback = _postedCallbacks.Dequeue();
+                return true;
             }
         }
     }

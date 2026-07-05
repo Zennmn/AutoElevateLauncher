@@ -1,6 +1,7 @@
 using System.Reflection;
 using System.Threading;
 using System.Windows;
+using System.Windows.Threading;
 using AutoPowerRunner.Services;
 using AutoPowerRunner.ViewModels;
 using Drawing = System.Drawing;
@@ -22,18 +23,18 @@ public partial class App : System.Windows.Application
     {
         base.OnStartup(e);
 
-        _singleInstanceMutex = new Mutex(initiallyOwned: true, "AutoPowerRunner.SingleInstance", out var createdNew);
-        if (!createdNew)
-        {
-            Shutdown();
-            return;
-        }
-
-        _ownsMutex = true;
-
         try
         {
-            var uiContext = SynchronizationContext.Current;
+            _singleInstanceMutex = new Mutex(initiallyOwned: true, "AutoPowerRunner.SingleInstance", out var createdNew);
+            if (!createdNew)
+            {
+                Shutdown();
+                return;
+            }
+
+            _ownsMutex = true;
+
+            var uiContext = GetOrCreateUiContext();
             var paths = AppPaths.ForCurrentUser();
             _logService = new LogService(paths);
             var configService = new TaskConfigService(paths);
@@ -56,7 +57,7 @@ public partial class App : System.Windows.Application
         }
         catch (Exception ex)
         {
-            _logService?.Error("Application startup failed.", ex);
+            LogStartupFailure(ex);
             System.Windows.MessageBox.Show(
                 $"Auto Power Runner could not start.{Environment.NewLine}{ex.Message}",
                 "Auto Power Runner",
@@ -68,15 +69,17 @@ public partial class App : System.Windows.Application
 
     protected override void OnExit(ExitEventArgs e)
     {
-        _trayIcon?.Dispose();
-        _processRunner?.StopAll();
-        if (_ownsMutex)
+        try
         {
-            _singleInstanceMutex?.ReleaseMutex();
+            DisposeTrayIcon();
+            StopRunningProcesses();
+            ReleaseMutex();
+            DisposeMutex();
         }
-
-        _singleInstanceMutex?.Dispose();
-        base.OnExit(e);
+        finally
+        {
+            base.OnExit(e);
+        }
     }
 
     private void CreateTrayIcon()
@@ -132,5 +135,108 @@ public partial class App : System.Windows.Application
         }
 
         Shutdown();
+    }
+
+    private SynchronizationContext GetOrCreateUiContext()
+    {
+        var uiContext = SynchronizationContext.Current;
+        if (uiContext is not null)
+        {
+            return uiContext;
+        }
+
+        uiContext = new DispatcherSynchronizationContext(Dispatcher);
+        SynchronizationContext.SetSynchronizationContext(uiContext);
+        return uiContext;
+    }
+
+    private void DisposeTrayIcon()
+    {
+        try
+        {
+            _trayIcon?.Dispose();
+        }
+        catch (Exception ex)
+        {
+            LogCleanupFailure("Could not dispose tray icon.", ex);
+        }
+        finally
+        {
+            _trayIcon = null;
+        }
+    }
+
+    private void StopRunningProcesses()
+    {
+        try
+        {
+            _processRunner?.StopAll();
+        }
+        catch (Exception ex)
+        {
+            LogCleanupFailure("Could not stop running processes.", ex);
+        }
+    }
+
+    private void ReleaseMutex()
+    {
+        try
+        {
+            if (_ownsMutex)
+            {
+                _singleInstanceMutex?.ReleaseMutex();
+            }
+        }
+        catch (Exception ex)
+        {
+            LogCleanupFailure("Could not release single-instance mutex.", ex);
+        }
+        finally
+        {
+            _ownsMutex = false;
+        }
+    }
+
+    private void DisposeMutex()
+    {
+        try
+        {
+            _singleInstanceMutex?.Dispose();
+        }
+        catch (Exception ex)
+        {
+            LogCleanupFailure("Could not dispose single-instance mutex.", ex);
+        }
+        finally
+        {
+            _singleInstanceMutex = null;
+        }
+    }
+
+    private void LogStartupFailure(Exception exception)
+    {
+        if (_logService is null)
+        {
+            try
+            {
+                _logService = new LogService(AppPaths.ForCurrentUser());
+            }
+            catch
+            {
+            }
+        }
+
+        LogCleanupFailure("Application startup failed.", exception);
+    }
+
+    private void LogCleanupFailure(string message, Exception exception)
+    {
+        try
+        {
+            _logService?.Error(message, exception);
+        }
+        catch
+        {
+        }
     }
 }

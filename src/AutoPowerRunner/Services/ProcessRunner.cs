@@ -206,14 +206,49 @@ public sealed class ProcessRunner : IProcessRunner
         }
 
         var task = runningTask.Task;
-        var process = runningTask.Process;
         _runningProcesses.TryRemove(task.Id, out _);
+        PostOrRun(() => ApplyCompletion(runningTask));
+    }
+
+    private void ApplyCompletion(RunningTask runningTask)
+    {
+        var task = runningTask.Task;
+        var process = runningTask.Process;
         task.LastResult.Status = TaskRuntimeStatus.Exited;
         task.LastResult.ExitCode = SafeExitCode(process);
         task.LastResult.ExitedAt = DateTimeOffset.Now;
         _log?.Info($"Task exited: {task.Name}, code {task.LastResult.ExitCode}");
         NotifyUpdated(task, runningTask.OnUpdated);
         process.Dispose();
+    }
+
+    private void PostOrRun(Action action)
+    {
+        if (_updateContext is null)
+        {
+            action();
+            return;
+        }
+
+        try
+        {
+            _updateContext.Post(_ =>
+            {
+                try
+                {
+                    action();
+                }
+                catch (Exception ex)
+                {
+                    _log?.Error("Task completion dispatch failed.", ex);
+                }
+            }, null);
+        }
+        catch (Exception ex)
+        {
+            _log?.Error("Could not dispatch task completion.", ex);
+            action();
+        }
     }
 
     private void MarkFailed(ManagedTask task, string error, Action<ManagedTask>? onUpdated)
