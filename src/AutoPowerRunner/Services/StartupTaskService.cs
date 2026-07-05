@@ -184,14 +184,68 @@ public sealed class StartupTaskService : IStartupTaskService
         }
 
         var taskToRun = GetListField(output, "Task To Run");
-        var searchableOutput = taskToRun ?? output;
-        if (!searchableOutput.Contains(executablePath, StringComparison.OrdinalIgnoreCase))
+        if (taskToRun is null)
+        {
+            return false;
+        }
+
+        var taskExecutablePath = ExtractExecutablePath(taskToRun);
+        if (taskExecutablePath is null || !PathsMatch(taskExecutablePath, executablePath))
         {
             return false;
         }
 
         var status = GetListField(output, "Status");
         return status is null || !status.Contains("Disabled", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static string? ExtractExecutablePath(string taskToRun)
+    {
+        var trimmed = taskToRun.Trim();
+        if (trimmed.Length == 0)
+        {
+            return null;
+        }
+
+        if (trimmed[0] == '"')
+        {
+            var closingQuoteIndex = trimmed.IndexOf('"', startIndex: 1);
+            if (closingQuoteIndex < 0)
+            {
+                return trimmed[1..].Trim();
+            }
+
+            return trimmed[1..closingQuoteIndex].Trim();
+        }
+
+        var firstArgumentSeparator = trimmed.IndexOfAny([' ', '\t']);
+        return firstArgumentSeparator < 0
+            ? trimmed
+            : trimmed[..firstArgumentSeparator].Trim();
+    }
+
+    private static bool PathsMatch(string taskExecutablePath, string executablePath)
+    {
+        var normalizedTaskPath = NormalizePathForComparison(taskExecutablePath);
+        var normalizedExecutablePath = NormalizePathForComparison(executablePath);
+        return string.Equals(normalizedTaskPath, normalizedExecutablePath, StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static string NormalizePathForComparison(string path)
+    {
+        var trimmed = path.Trim().Trim('"');
+
+        try
+        {
+            return Path.GetFullPath(trimmed);
+        }
+        catch (Exception exception) when (
+            exception is ArgumentException
+            || exception is NotSupportedException
+            || exception is PathTooLongException)
+        {
+            return trimmed;
+        }
     }
 
     private static string? GetListField(string output, string fieldName)

@@ -67,6 +67,79 @@ public sealed class StartupTaskServiceTests
     }
 
     [Fact]
+    public void IsEnabled_WhenVerboseOutputHasQuotedExecutablePathWithArguments_ReturnsTrue()
+    {
+        var executablePath = @"C:\Program Files\AutoPowerRunner\AutoPowerRunner.exe";
+        var service = new StartupTaskService(
+            executablePath,
+            commandRunner: (_, _) => new StartupTaskService.CommandResult(0, $"""
+                Folder: \
+                TaskName: AutoPowerRunner
+                Task To Run: "{executablePath}" --some-arg
+                Status: Ready
+                Run Level: Highest
+                """, ""));
+
+        var enabled = service.IsEnabled();
+
+        Assert.True(enabled);
+    }
+
+    [Fact]
+    public void IsEnabled_WhenVerboseOutputExecutablePathHasDifferentCasing_ReturnsTrue()
+    {
+        var service = new StartupTaskService(
+            @"C:\Program Files\AutoPowerRunner\AutoPowerRunner.exe",
+            commandRunner: (_, _) => new StartupTaskService.CommandResult(0, """
+                Folder: \
+                TaskName: AutoPowerRunner
+                Task To Run: "c:\program files\autopowerrunner\autopowerrunner.exe"
+                Status: Ready
+                Run Level: Highest
+                """, ""));
+
+        var enabled = service.IsEnabled();
+
+        Assert.True(enabled);
+    }
+
+    [Fact]
+    public void IsEnabled_WhenVerboseOutputExecutablePathHasOldExtension_ReturnsFalse()
+    {
+        var service = new StartupTaskService(
+            @"C:\Program Files\AutoPowerRunner\AutoPowerRunner.exe",
+            commandRunner: (_, _) => new StartupTaskService.CommandResult(0, """
+                Folder: \
+                TaskName: AutoPowerRunner
+                Task To Run: "C:\Program Files\AutoPowerRunner\AutoPowerRunner.exe.old"
+                Status: Ready
+                Run Level: Highest
+                """, ""));
+
+        var enabled = service.IsEnabled();
+
+        Assert.False(enabled);
+    }
+
+    [Fact]
+    public void IsEnabled_WhenVerboseOutputWrapsExecutablePathInCommandShell_ReturnsFalse()
+    {
+        var service = new StartupTaskService(
+            @"C:\Program Files\AutoPowerRunner\AutoPowerRunner.exe",
+            commandRunner: (_, _) => new StartupTaskService.CommandResult(0, """
+                Folder: \
+                TaskName: AutoPowerRunner
+                Task To Run: cmd.exe /c "C:\Program Files\AutoPowerRunner\AutoPowerRunner.exe"
+                Status: Ready
+                Run Level: Highest
+                """, ""));
+
+        var enabled = service.IsEnabled();
+
+        Assert.False(enabled);
+    }
+
+    [Fact]
     public void IsEnabled_WhenVerboseOutputContainsOldExecutablePath_ReturnsFalse()
     {
         var service = new StartupTaskService(
