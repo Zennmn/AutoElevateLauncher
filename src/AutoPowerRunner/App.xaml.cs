@@ -1,7 +1,3 @@
-﻿using System.Configuration;
-using System.Data;
-using System.Windows;
-
 namespace AutoPowerRunner;
 
 /// <summary>
@@ -10,4 +6,3 @@ namespace AutoPowerRunner;
 public partial class App : System.Windows.Application
 {
 }
-
