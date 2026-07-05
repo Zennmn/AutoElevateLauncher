@@ -3,7 +3,7 @@ using System.IO;
 
 namespace AutoPowerRunner.Services;
 
-public sealed class LogService
+public sealed class LogService : ILogService
 {
     private static readonly ConcurrentDictionary<string, object> PathLocks = new(StringComparer.OrdinalIgnoreCase);
 

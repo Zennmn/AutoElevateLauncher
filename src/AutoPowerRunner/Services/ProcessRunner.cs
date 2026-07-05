@@ -6,7 +6,7 @@ using AutoPowerRunner.Models;
 
 namespace AutoPowerRunner.Services;
 
-public sealed class ProcessRunner
+public sealed class ProcessRunner : IProcessRunner
 {
     private readonly LogService? _log;
     private readonly SynchronizationContext? _updateContext;

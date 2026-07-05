@@ -4,7 +4,7 @@ using AutoPowerRunner.Models;
 
 namespace AutoPowerRunner.Services;
 
-public sealed class TaskConfigService
+public sealed class TaskConfigService : ITaskConfigService
 {
     private readonly string _configDirectory;
     private readonly string _configFile;

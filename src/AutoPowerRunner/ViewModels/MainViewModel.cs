@@ -9,31 +9,45 @@ namespace AutoPowerRunner.ViewModels;
 
 public sealed class MainViewModel : INotifyPropertyChanged
 {
-    private readonly TaskConfigService _configService;
-    private readonly ProcessRunner _processRunner;
-    private readonly StartupTaskService _startupTaskService;
-    private readonly LogService _logService;
+    private readonly ITaskConfigService _configService;
+    private readonly IProcessRunner _processRunner;
+    private readonly IStartupTaskService _startupTaskService;
+    private readonly ILogService _logService;
+    private readonly SynchronizationContext? _updateContext;
     private ManagedTask? _selectedTask;
     private bool _isAdministratorAutostartEnabled;
 
     public MainViewModel(
-        TaskConfigService configService,
-        ProcessRunner processRunner,
-        StartupTaskService startupTaskService,
-        LogService logService)
+        ITaskConfigService configService,
+        IProcessRunner processRunner,
+        IStartupTaskService startupTaskService,
+        ILogService logService,
+        SynchronizationContext? updateContext = null)
     {
         _configService = configService;
         _processRunner = processRunner;
         _startupTaskService = startupTaskService;
         _logService = logService;
+        _updateContext = updateContext;
 
         RunSelectedCommand = new RelayCommand(_ => RunSelected(), _ => SelectedTask is not null);
         StopSelectedCommand = new RelayCommand(_ => StopSelected(), _ => SelectedTask is not null);
-        DeleteSelectedCommand = new RelayCommand(_ => DeleteSelected(), _ => SelectedTask is not null);
-        ToggleSelectedEnabledCommand = new RelayCommand(_ => ToggleSelectedEnabled(), _ => SelectedTask is not null);
+        DeleteSelectedCommand = new AsyncRelayCommand(
+            _ => DeleteSelectedAsync(),
+            _logService,
+            "Could not delete selected task.",
+            _ => SelectedTask is not null);
+        ToggleSelectedEnabledCommand = new AsyncRelayCommand(
+            _ => ToggleSelectedEnabledAsync(),
+            _logService,
+            "Could not update selected task.",
+            _ => SelectedTask is not null);
         RunAllEnabledCommand = new RelayCommand(_ => RunAllEnabled());
         StopAllCommand = new RelayCommand(_ => StopAll());
-        ToggleAutostartCommand = new RelayCommand(_ => ToggleAutostart());
+        ToggleAutostartCommand = new AsyncRelayCommand(
+            _ => ToggleAutostartAsync(),
+            _logService,
+            "Could not toggle administrator autostart.");
     }
 
     public ObservableCollection<ManagedTask> Tasks { get; } = [];
@@ -142,50 +156,82 @@ public sealed class MainViewModel : INotifyPropertyChanged
         }
     }
 
-    private async void DeleteSelected()
+    private async Task DeleteSelectedAsync()
     {
         if (SelectedTask is null)
         {
             return;
         }
 
-        _processRunner.Stop(SelectedTask.Id);
-        Tasks.Remove(SelectedTask);
+        var task = SelectedTask;
+        var index = Tasks.IndexOf(task);
+        if (index < 0)
+        {
+            return;
+        }
+
+        _processRunner.Stop(task.Id);
+        Tasks.RemoveAt(index);
         SelectedTask = null;
-        await SaveAsync();
+        try
+        {
+            await SaveAsync();
+        }
+        catch (Exception ex)
+        {
+            Tasks.Insert(Math.Min(index, Tasks.Count), task);
+            SelectedTask = task;
+            _logService.Error($"Could not delete task '{task.Name}'.", ex);
+        }
     }
 
-    private async void ToggleSelectedEnabled()
+    private async Task ToggleSelectedEnabledAsync()
     {
         if (SelectedTask is null)
         {
             return;
         }
 
-        SelectedTask.IsEnabled = !SelectedTask.IsEnabled;
-        await SaveAsync();
-        OnPropertyChanged(nameof(Tasks));
+        var task = SelectedTask;
+        var previousIsEnabled = task.IsEnabled;
+        task.IsEnabled = !task.IsEnabled;
+        try
+        {
+            await SaveAsync();
+        }
+        catch (Exception ex)
+        {
+            task.IsEnabled = previousIsEnabled;
+            _logService.Error($"Could not update task '{task.Name}'.", ex);
+        }
+        finally
+        {
+            OnPropertyChanged(nameof(Tasks));
+        }
     }
 
-    private void ToggleAutostart()
+    private async Task ToggleAutostartAsync()
     {
-        if (IsAdministratorAutostartEnabled)
+        await Task.Run(() =>
         {
-            _startupTaskService.Disable();
-        }
-        else
-        {
-            _startupTaskService.Enable();
-        }
+            if (IsAdministratorAutostartEnabled)
+            {
+                _startupTaskService.Disable();
+            }
+            else
+            {
+                _startupTaskService.Enable();
+            }
+        });
 
-        IsAdministratorAutostartEnabled = _startupTaskService.IsEnabled();
+        IsAdministratorAutostartEnabled = await Task.Run(_startupTaskService.IsEnabled);
     }
 
     private void RunTask(ManagedTask task)
     {
         try
         {
-            _processRunner.Start(task, _ => OnPropertyChanged(nameof(Tasks)));
+            _processRunner.Start(task, _ => NotifyTasksChangedFromProcessCallback());
         }
         catch (Exception ex)
         {
@@ -193,13 +239,48 @@ public sealed class MainViewModel : INotifyPropertyChanged
         }
     }
 
+    private void NotifyTasksChangedFromProcessCallback()
+    {
+        void Notify()
+        {
+            try
+            {
+                OnPropertyChanged(nameof(Tasks));
+            }
+            catch (Exception ex)
+            {
+                _logService.Error("Could not notify task update.", ex);
+            }
+        }
+
+        if (_updateContext is null)
+        {
+            Notify();
+            return;
+        }
+
+        try
+        {
+            _updateContext.Post(_ => Notify(), null);
+        }
+        catch (Exception ex)
+        {
+            _logService.Error("Could not dispatch task update notification.", ex);
+        }
+    }
+
     private void RaiseCommandStates()
     {
         foreach (var command in new[] { RunSelectedCommand, StopSelectedCommand, DeleteSelectedCommand, ToggleSelectedEnabledCommand })
         {
-            if (command is RelayCommand relayCommand)
+            switch (command)
             {
-                relayCommand.RaiseCanExecuteChanged();
+                case RelayCommand relayCommand:
+                    relayCommand.RaiseCanExecuteChanged();
+                    break;
+                case AsyncRelayCommand asyncRelayCommand:
+                    asyncRelayCommand.RaiseCanExecuteChanged();
+                    break;
             }
         }
     }

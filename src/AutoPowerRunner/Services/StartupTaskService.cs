@@ -6,7 +6,7 @@ using System.Threading.Tasks;
 
 namespace AutoPowerRunner.Services;
 
-public sealed class StartupTaskService
+public sealed class StartupTaskService : IStartupTaskService
 {
     public const string DefaultTaskName = "AutoPowerRunner";
 
