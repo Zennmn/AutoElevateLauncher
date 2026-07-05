@@ -4,8 +4,62 @@
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         mc:Ignorable="d"
-        Title="MainWindow" Height="450" Width="800">
-    <Grid>
+        Title="Auto Power Runner"
+        Width="920"
+        Height="560"
+        MinWidth="760"
+        MinHeight="460">
+    <DockPanel Margin="12" LastChildFill="True">
+        <Border DockPanel.Dock="Top"
+                Margin="0,0,0,10"
+                Padding="12"
+                BorderBrush="#D0D7DE"
+                BorderThickness="1"
+                CornerRadius="4"
+                Background="#F6F8FA">
+            <DockPanel LastChildFill="True">
+                <Button DockPanel.Dock="Right"
+                        MinWidth="190"
+                        Padding="12,6"
+                        Command="{Binding ToggleAutostartCommand}"
+                        Content="{Binding ToggleAutostartText}" />
+                <TextBlock VerticalAlignment="Center"
+                           FontWeight="SemiBold"
+                           Text="{Binding AutostartStatusText}" />
+            </DockPanel>
+        </Border>
 
-    </Grid>
+        <Border DockPanel.Dock="Bottom"
+                Margin="0,10,0,0"
+                Padding="0"
+                BorderThickness="0">
+            <StackPanel HorizontalAlignment="Right" Orientation="Horizontal">
+                <Button MinWidth="72" Margin="0,0,6,0" Padding="10,6" Click="AddTask_Click" Content="Add" />
+                <Button MinWidth="72" Margin="0,0,6,0" Padding="10,6" Click="EditTask_Click" Content="Edit" />
+                <Button MinWidth="72" Margin="0,0,6,0" Padding="10,6" Command="{Binding DeleteSelectedCommand}" Content="Delete" />
+                <Button MinWidth="112" Margin="0,0,6,0" Padding="10,6" Command="{Binding ToggleSelectedEnabledCommand}" Content="Enable/Disable" />
+                <Button MinWidth="72" Margin="0,0,6,0" Padding="10,6" Command="{Binding RunSelectedCommand}" Content="Run" />
+                <Button MinWidth="72" Margin="0,0,6,0" Padding="10,6" Command="{Binding StopSelectedCommand}" Content="Stop" />
+                <Button MinWidth="88" Padding="10,6" Click="OpenLog_Click" Content="Open Log" />
+            </StackPanel>
+        </Border>
+
+        <DataGrid AutoGenerateColumns="False"
+                  CanUserAddRows="False"
+                  CanUserDeleteRows="False"
+                  IsReadOnly="True"
+                  ItemsSource="{Binding Tasks}"
+                  SelectionMode="Single"
+                  SelectionUnit="FullRow"
+                  SelectedItem="{Binding SelectedTask, Mode=TwoWay}">
+            <DataGrid.Columns>
+                <DataGridTextColumn Width="2*" Header="Name" Binding="{Binding Name}" />
+                <DataGridTextColumn Width="*" Header="Type" Binding="{Binding Type}" />
+                <DataGridTextColumn Width="*" Header="Mode" Binding="{Binding RunMode}" />
+                <DataGridCheckBoxColumn Width="80" Header="Enabled" Binding="{Binding IsEnabled}" />
+                <DataGridTextColumn Width="*" Header="Status" Binding="{Binding LastResult.Status}" />
+                <DataGridTextColumn Width="2*" Header="Recent Result" Binding="{Binding LastResult.Summary}" />
+            </DataGrid.Columns>
+        </DataGrid>
+    </DockPanel>
 </Window>
