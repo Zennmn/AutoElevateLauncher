@@ -90,7 +90,7 @@ public sealed class ProcessRunner : IProcessRunner
         runningTask.RestartCancellation.Cancel();
 
         var attempt = runningTask.CurrentAttempt;
-        if (attempt is null || Volatile.Read(ref attempt.Completed) == 1)
+        if (attempt is null)
         {
             FinalizeWithoutProcess(runningTask, TaskRuntimeStatus.Stopped);
             return;
@@ -182,6 +182,7 @@ public sealed class ProcessRunner : IProcessRunner
     {
         if (Interlocked.Exchange(ref attempt.Completed, 1) == 1)
         {
+            await attempt.Completion.Task.ConfigureAwait(false);
             return;
         }
 
@@ -239,6 +240,10 @@ public sealed class ProcessRunner : IProcessRunner
         {
             _log?.Error($"Task completion failed: {runningTask.Definition.Name}", ex);
             FinalizeTask(runningTask, TaskRuntimeStatus.Failed, null, ex.Message);
+        }
+        finally
+        {
+            attempt.Completion.TrySetResult();
         }
     }
 
@@ -394,6 +399,7 @@ public sealed class ProcessRunner : IProcessRunner
         public Process Process { get; }
         public Task<string> OutputTask { get; set; } = Task.FromResult("");
         public Task<string> ErrorTask { get; set; } = Task.FromResult("");
+        public TaskCompletionSource Completion { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
         public int Completed;
     }
 }
