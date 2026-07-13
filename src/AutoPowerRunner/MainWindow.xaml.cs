@@ -65,22 +65,6 @@ public partial class MainWindow : Window
         }
     }
 
-    private async void AddTask_Click(object sender, RoutedEventArgs e)
-    {
-        var editor = new TaskEditorWindow { Owner = this };
-        if (editor.ShowDialog() == true)
-        {
-            try
-            {
-                await _viewModel.AddOrUpdateTaskAsync(editor.Result);
-            }
-            catch (Exception ex)
-            {
-                ShowError("无法保存任务。", ex);
-            }
-        }
-    }
-
     private async void EditTask_Click(object sender, RoutedEventArgs e)
     {
         if (_viewModel.SelectedTask is null)

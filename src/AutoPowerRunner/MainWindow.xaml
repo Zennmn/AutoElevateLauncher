@@ -312,12 +312,6 @@
                                 <TextBlock Margin="8,0,0,0" Text="新增程序" />
                             </StackPanel>
                         </Button>
-                        <Button MinWidth="108" Click="AddTask_Click">
-                            <StackPanel Orientation="Horizontal">
-                                <TextBlock Style="{StaticResource ButtonIcon}" Text="&#xE710;" Foreground="{StaticResource Blue}" />
-                                <TextBlock Margin="8,0,0,0" Text="高级新增" />
-                            </StackPanel>
-                        </Button>
                         <Button MinWidth="96" Click="EditTask_Click" IsEnabled="{Binding HasSelectedTask}">
                             <StackPanel Orientation="Horizontal">
                                 <TextBlock Style="{StaticResource ButtonIcon}" Text="&#xE70F;" />
