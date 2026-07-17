@@ -111,10 +111,10 @@ public partial class MainWindow : Window
             return;
         }
 
+        _resolutionSettings = candidate;
         try
         {
             await _resolutionSettingsService.SaveAsync(candidate);
-            _resolutionSettings = candidate;
             UpdateResolutionButtonText();
             _viewModel.SetStatusMessage(candidate.IsEnabled
                 ? $"分辨率快捷键已设置为 {HotkeyFormatter.Format(candidate)}"
@@ -122,6 +122,7 @@ public partial class MainWindow : Window
         }
         catch (Exception ex)
         {
+            _resolutionSettings = previous;
             _ = _globalHotkeyService.TryUpdate(windowHandle, previous, ToggleResolution, out _);
             ShowError("无法保存分辨率切换设置。", ex);
         }
