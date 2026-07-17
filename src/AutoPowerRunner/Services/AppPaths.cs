@@ -8,12 +8,14 @@ public sealed class AppPaths
     {
         ConfigDirectory = Path.Combine(appDataRoot, "AutoPowerRunner");
         ConfigFile = Path.Combine(ConfigDirectory, "config.json");
+        SettingsFile = Path.Combine(ConfigDirectory, "settings.json");
         LogDirectory = Path.Combine(localAppDataRoot, "AutoPowerRunner", "logs");
         LogFile = Path.Combine(LogDirectory, "app.log");
     }
 
     public string ConfigDirectory { get; }
     public string ConfigFile { get; }
+    public string SettingsFile { get; }
     public string LogDirectory { get; }
     public string LogFile { get; }
 

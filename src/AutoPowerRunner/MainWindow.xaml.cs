@@ -3,7 +3,9 @@ using System.Diagnostics;
 using System.IO;
 using System.Windows;
 using System.Windows.Input;
+using System.Windows.Interop;
 using AutoPowerRunner.Models;
+using AutoPowerRunner.Services;
 using AutoPowerRunner.ViewModels;
 using MessageBox = System.Windows.MessageBox;
 using OpenFileDialog = Microsoft.Win32.OpenFileDialog;
@@ -13,12 +15,28 @@ namespace AutoPowerRunner;
 public partial class MainWindow : Window
 {
     private readonly MainViewModel _viewModel;
+    private readonly IResolutionSettingsService _resolutionSettingsService;
+    private readonly IDisplayResolutionService _displayResolutionService;
+    private readonly IGlobalHotkeyService _globalHotkeyService;
+    private readonly ILogService _logService;
+    private readonly ResolutionToggleController _resolutionToggleController;
+    private ResolutionSwitchSettings _resolutionSettings = new();
     private bool _allowClose;
 
-    public MainWindow(MainViewModel viewModel)
+    public MainWindow(
+        MainViewModel viewModel,
+        IResolutionSettingsService resolutionSettingsService,
+        IDisplayResolutionService displayResolutionService,
+        IGlobalHotkeyService globalHotkeyService,
+        ILogService logService)
     {
         InitializeComponent();
         _viewModel = viewModel;
+        _resolutionSettingsService = resolutionSettingsService;
+        _displayResolutionService = displayResolutionService;
+        _globalHotkeyService = globalHotkeyService;
+        _logService = logService;
+        _resolutionToggleController = new ResolutionToggleController(displayResolutionService);
         DataContext = _viewModel;
         ApplyResponsiveLayout(Width);
     }
@@ -63,6 +81,73 @@ public partial class MainWindow : Window
     public async Task InitializeAsync()
     {
         await _viewModel.LoadAsync();
+        _resolutionSettings = await _resolutionSettingsService.LoadAsync();
+        UpdateResolutionButtonText();
+
+        var windowHandle = new WindowInteropHelper(this).EnsureHandle();
+        if (!_globalHotkeyService.TryUpdate(windowHandle, _resolutionSettings, ToggleResolution, out var error))
+        {
+            var message = error ?? "分辨率切换快捷键注册失败。";
+            ResolutionSettingsButton.Content = "分辨率：快捷键冲突";
+            _viewModel.SetStatusMessage(message);
+            _logService.Error(message);
+        }
+    }
+
+    private async void ResolutionSettings_Click(object sender, RoutedEventArgs e)
+    {
+        var previous = _resolutionSettings.Clone();
+        var editor = new ResolutionSettingsWindow(previous, _displayResolutionService) { Owner = this };
+        if (editor.ShowDialog() != true)
+        {
+            return;
+        }
+
+        var candidate = editor.Result;
+        var windowHandle = new WindowInteropHelper(this).Handle;
+        if (!_globalHotkeyService.TryUpdate(windowHandle, candidate, ToggleResolution, out var error))
+        {
+            ShowError(error ?? "无法注册新的分辨率切换快捷键。", new InvalidOperationException("原快捷键配置已保留。"));
+            return;
+        }
+
+        try
+        {
+            await _resolutionSettingsService.SaveAsync(candidate);
+            _resolutionSettings = candidate;
+            UpdateResolutionButtonText();
+            _viewModel.SetStatusMessage(candidate.IsEnabled
+                ? $"分辨率快捷键已设置为 {HotkeyFormatter.Format(candidate)}"
+                : "快速分辨率切换已关闭");
+        }
+        catch (Exception ex)
+        {
+            _ = _globalHotkeyService.TryUpdate(windowHandle, previous, ToggleResolution, out _);
+            ShowError("无法保存分辨率切换设置。", ex);
+        }
+    }
+
+    private void ToggleResolution()
+    {
+        try
+        {
+            var result = _resolutionToggleController.Toggle(_resolutionSettings);
+            _viewModel.SetStatusMessage(result.Message);
+            _logService.Info(result.Message);
+        }
+        catch (Exception ex)
+        {
+            const string message = "快速切换分辨率失败";
+            _viewModel.SetStatusMessage($"{message}：{ex.Message}");
+            _logService.Error(message, ex);
+        }
+    }
+
+    private void UpdateResolutionButtonText()
+    {
+        ResolutionSettingsButton.Content = _resolutionSettings.IsEnabled
+            ? $"分辨率 {HotkeyFormatter.Format(_resolutionSettings)}"
+            : "分辨率切换：未启用";
     }
 
     public void AllowClose()
@@ -175,6 +260,12 @@ public partial class MainWindow : Window
         }
 
         base.OnClosing(e);
+    }
+
+    protected override void OnClosed(EventArgs e)
+    {
+        _globalHotkeyService.Dispose();
+        base.OnClosed(e);
     }
 
     private void ShowError(string message, Exception exception)

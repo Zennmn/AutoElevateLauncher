@@ -30,3 +30,22 @@ public interface ILogService
     void Info(string message);
     void Error(string message, Exception? exception = null);
 }
+
+public interface IResolutionSettingsService
+{
+    Task<ResolutionSwitchSettings> LoadAsync(CancellationToken cancellationToken = default);
+    Task SaveAsync(ResolutionSwitchSettings settings, CancellationToken cancellationToken = default);
+}
+
+public interface IDisplayResolutionService
+{
+    DisplayResolution GetCurrent();
+    bool IsSupported(DisplayResolution resolution);
+    void Apply(DisplayResolution resolution);
+}
+
+public interface IGlobalHotkeyService : IDisposable
+{
+    bool TryUpdate(IntPtr windowHandle, ResolutionSwitchSettings settings, Action callback, out string? error);
+    void Unregister();
+}

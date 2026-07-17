@@ -63,6 +63,9 @@ public partial class App : System.Windows.Application
             _logService = new LogService(paths);
             var silentStartup = !ShouldShowMainWindow(e.Args);
             var configService = new TaskConfigService(paths);
+            var resolutionSettingsService = new ResolutionSettingsService(paths);
+            var displayResolutionService = new DisplayResolutionService();
+            var globalHotkeyService = new GlobalHotkeyService();
             _processRunner = new ProcessRunner(_logService, uiContext);
             var executablePath = GetExecutablePath();
             var startupTaskService = new StartupTaskService(executablePath, _logService);
@@ -74,7 +77,12 @@ public partial class App : System.Windows.Application
                 _logService,
                 uiContext,
                 IsRunningAsAdministrator());
-            _mainWindow = new MainWindow(_viewModel);
+            _mainWindow = new MainWindow(
+                _viewModel,
+                resolutionSettingsService,
+                displayResolutionService,
+                globalHotkeyService,
+                _logService);
 
             var showMainWindow = !silentStartup;
 
