@@ -8,6 +8,13 @@ public sealed class DisplayResolutionService : IDisplayResolutionService
 {
     private const int EnumCurrentSettings = -1;
     private const int DispChangeSuccessful = 0;
+    private const int DispChangeRestart = 1;
+    private const int DispChangeFailed = -1;
+    private const int DispChangeBadMode = -2;
+    private const int DispChangeNotUpdated = -3;
+    private const int DispChangeBadFlags = -4;
+    private const int DispChangeBadParam = -5;
+    private const int DispChangeBadDualView = -6;
     private const int CdsUpdateRegistry = 0x00000001;
     private const int CdsTest = 0x00000002;
     private const int DmPelsWidth = 0x00080000;
@@ -73,14 +80,15 @@ public sealed class DisplayResolutionService : IDisplayResolutionService
         dmSize = (short)Marshal.SizeOf<DevMode>()
     };
 
-    private static string GetChangeErrorMessage(int result, DisplayResolution resolution) => result switch
+    internal static string GetChangeErrorMessage(int result, DisplayResolution resolution) => result switch
     {
-        -1 => $"显卡驱动不支持 {resolution}。",
-        -2 => $"无法把 {resolution} 写入显示设置。",
-        -3 => $"切换到 {resolution} 需要重新启动系统。",
-        -4 => $"没有权限切换到 {resolution}。",
-        -5 => $"切换到 {resolution} 时传入了无效参数。",
-        -6 => $"当前为双显示模式，无法切换到 {resolution}。",
+        DispChangeRestart => $"切换到 {resolution} 需要重新启动系统后生效。",
+        DispChangeFailed => $"显卡驱动切换到 {resolution} 失败。",
+        DispChangeBadMode => $"显卡驱动不支持 {resolution}。",
+        DispChangeNotUpdated => $"无法把 {resolution} 写入显示设置。",
+        DispChangeBadFlags => $"切换到 {resolution} 时传入了无效标志。",
+        DispChangeBadParam => $"切换到 {resolution} 时传入了无效参数。",
+        DispChangeBadDualView => $"当前为双显示模式，无法切换到 {resolution}。",
         _ => $"无法切换到 {resolution}（错误代码 {result}）。"
     };
 
