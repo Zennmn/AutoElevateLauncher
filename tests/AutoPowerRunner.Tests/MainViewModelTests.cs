@@ -248,6 +248,34 @@ public sealed class MainViewModelTests
     }
 
     [Fact]
+    public void MainViewModel_RunAndStopSelected_ReportsActualTrackedState()
+    {
+        var processRunner = new FakeProcessRunner();
+        var viewModel = CreateViewModel(processRunner: processRunner);
+        var task = new ManagedTask { Name = "Status task" };
+        viewModel.Tasks.Add(task);
+        viewModel.SelectedTask = task;
+
+        viewModel.RunSelectedCommand.Execute(null);
+
+        Assert.Contains(task, processRunner.StartedTasks);
+        Assert.Contains(task.Id, processRunner.RunningTaskIds);
+        Assert.Equal(TaskRuntimeStatus.Running, task.LastResult.Status);
+        Assert.Equal("任务“Status task”已启动", viewModel.StatusMessage);
+        Assert.False(viewModel.RunSelectedCommand.CanExecute(null));
+        Assert.True(viewModel.StopSelectedCommand.CanExecute(null));
+
+        viewModel.StopSelectedCommand.Execute(null);
+
+        Assert.Contains(task.Id, processRunner.StoppedTaskIds);
+        Assert.DoesNotContain(task.Id, processRunner.RunningTaskIds);
+        Assert.Equal(TaskRuntimeStatus.Stopped, task.LastResult.Status);
+        Assert.Equal("任务“Status task”已停止", viewModel.StatusMessage);
+        Assert.True(viewModel.RunSelectedCommand.CanExecute(null));
+        Assert.False(viewModel.StopSelectedCommand.CanExecute(null));
+    }
+
+    [Fact]
     public async Task MainViewModel_DeleteSelected_WhenSaveFails_RollsBackAndLogs()
     {
         var config = new FakeTaskConfigService { SaveException = new IOException("save failed") };
@@ -534,7 +562,9 @@ public sealed class MainViewModelTests
 
     private sealed class FakeProcessRunner : IProcessRunner
     {
-        public IReadOnlyCollection<Guid> RunningTaskIds => [];
+        private readonly Dictionary<Guid, ManagedTask> _runningTasks = [];
+
+        public IReadOnlyCollection<Guid> RunningTaskIds => _runningTasks.Keys.ToArray();
         public List<ManagedTask> StartedTasks { get; } = [];
         public List<Guid> StoppedTaskIds { get; } = [];
         public List<string>? Events { get; set; }
@@ -543,6 +573,8 @@ public sealed class MainViewModelTests
         public Process Start(ManagedTask task, Action<ManagedTask>? onUpdated = null)
         {
             StartedTasks.Add(task);
+            _runningTasks[task.Id] = task;
+            task.LastResult.Status = TaskRuntimeStatus.Running;
             LastUpdateCallback = onUpdated;
             return new Process();
         }
@@ -551,10 +583,20 @@ public sealed class MainViewModelTests
         {
             Events?.Add("stop");
             StoppedTaskIds.Add(taskId);
+            if (_runningTasks.Remove(taskId, out var task))
+            {
+                task.LastResult.Status = TaskRuntimeStatus.Stopped;
+            }
         }
 
         public void StopAll()
         {
+            foreach (var task in _runningTasks.Values)
+            {
+                task.LastResult.Status = TaskRuntimeStatus.Stopped;
+            }
+
+            _runningTasks.Clear();
         }
     }
 

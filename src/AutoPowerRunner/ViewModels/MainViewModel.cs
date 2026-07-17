@@ -151,6 +151,11 @@ public sealed class MainViewModel : INotifyPropertyChanged
         }
     }
 
+    public void SetStatusMessage(string message)
+    {
+        StatusMessage = message;
+    }
+
     public ICommand SaveCommand { get; }
     public ICommand RunSelectedCommand { get; }
     public ICommand StopSelectedCommand { get; }
@@ -265,8 +270,11 @@ public sealed class MainViewModel : INotifyPropertyChanged
     {
         if (SelectedTask is not null)
         {
-            _processRunner.Stop(SelectedTask.Id);
+            var task = SelectedTask;
+            _processRunner.Stop(task.Id);
+            StatusMessage = $"任务“{task.Name}”已停止";
             NotifyTaskSummaryChanged();
+            RaiseCommandStates();
         }
     }
 
@@ -355,6 +363,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
         try
         {
             _processRunner.Start(task, _ => NotifyTasksChangedFromProcessCallback());
+            StatusMessage = $"任务“{task.Name}”已启动";
             NotifyTaskSummaryChanged();
             RaiseCommandStates();
         }
